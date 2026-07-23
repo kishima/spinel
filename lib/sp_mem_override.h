@@ -8,8 +8,9 @@
  * across the runtime (error-prone and hostile to upstream merges), we remap the
  * libc names to per-instance wrappers with function-like macros -- the same
  * "errno-style" indirection Phase 3 used for the runtime globals. Every
- * allocation in lib/*.c, regexp/*.c, the sp_runtime.h inlines, and the generated
- * program TU (which includes sp_runtime.h) then routes through the current
+ * allocation in the runtime .c files (lib and regexp), the sp_runtime.h inlines,
+ * and the generated program TU (which includes sp_runtime.h) then routes through
+ * the current
  * instance's sp_ctx backend, so instances no longer share one libc heap.
  *
  * The wrappers are DEFINED once, in sp_ctx.c, which #undefs these macros at the
