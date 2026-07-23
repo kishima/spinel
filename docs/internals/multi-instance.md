@@ -284,3 +284,37 @@ generated code and runtime stay byte-identical there. Validated by
 `test/multi_ctx/smoke.sh` (`make test-multi-ctx`): single-instance output
 matches `-E`, N concurrent instances each compute the correct result, clean
 under ASan.
+
+### Multi-program linking (T4-0)
+
+To link *different* programs into one binary (an OS's kernel + desktop as
+separate Spinel programs in one ELF), a generated TU must export nothing but its
+entry. It used to export ~24 non-static symbols the runtime `.a` references, so
+two TUs collided at link. These are:
+
+- **4 data** (`sp_trap_state`, `sp_trap_proc`, `_sp_proc_poly_ret`,
+  `_sp_proc_poly_args`) → moved to `sp_ctx` fields (`#ifndef SP_MULTI_CTX` drops
+  the `sp_runtime.h` definitions; a name macro reaches the field).
+- **~20 functions** (`sp_raise_cls`, `sp_sprintf`, `sp_proc_call`, `sp_box_proc`,
+  `sp_exc_*`, `sp_signal_*`, `sp_fiber_reraise`, `sp_bigint_raise_zerodiv`) →
+  per-instance function pointers in `sp_ctx`, registered by `sp_tu_ctx_init`,
+  reached by the runtime through name macros. The `sp_runtime.h` definitions
+  become `SP_TU_STATIC` (one private copy per TU); an `#undef` block after the
+  ctx include lets the header use the direct names and take their addresses.
+  Prototype re-declarations in the runtime `.c`/`.h` are `#ifndef SP_MULTI_CTX`.
+
+Two runtime TUs cannot include `sp_ctx.h` — the regexp engine and the bigint
+mruby-shim carry conflicting types (`mrb_bool` etc.) — so they cannot use the
+name macros. The three functions they call are therefore provided as real `.a`
+globals in `sp_ctx.c`: `sp_raise_cls` / `sp_bigint_raise_zerodiv` forward to the
+current instance's registered copy; `sp_sprintf` is program-independent
+(`vsnprintf` + the ctx-routed string heap), so one shared definition is correct.
+
+The default build keeps external linkage (`SP_TU_STATIC` empty), so it is
+unchanged. `test/multi_ctx/link2.sh` links two programs into one binary and runs
+each as its own instance; `check_syms.sh` asserts a generated TU exports no
+global but its entry (catches a codegen regression that re-introduces one).
+
+The **objcopy `--prefix-symbols` fallback** (duplicate the runtime per program)
+was not needed; it remains the escape hatch if a future symbol proves
+un-routable, at the cost of runtime duplication in flash (a Phase-5 concern).
