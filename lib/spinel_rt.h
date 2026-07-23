@@ -87,8 +87,10 @@ static int sp_bt_n = 0;
 /* malloc_trim is glibc's: the collector (sp_gc.c) returns freed arena pages
    with it after a full cycle, and nowhere else defines it -- not Darwin, not
    the BSDs, not musl. Nothing here calls it; the no-op keeps any generated
-   or carried C that spells it portable. */
-#if defined(__GLIBC__)
+   or carried C that spells it portable. Also a no-op under SP_MULTI_CTX
+   (allocation is routed through the instance backend; see
+   lib/sp_mem_override.h). */
+#if defined(__GLIBC__) && !defined(SP_MULTI_CTX)
 #include <malloc.h>
 #else
 #define malloc_trim(x) ((void)0)

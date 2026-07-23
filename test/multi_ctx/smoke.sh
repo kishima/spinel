@@ -20,6 +20,10 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SP="${SPINEL:-$ROOT/bin/spinel}"
 LIB="${LIB:-$ROOT/lib}"
 MC="$LIB/libspinel_rt_mc.a"
+# Force the allocation override into the generated program TU too, matching the
+# archive build (Makefile MC_DEF). Without it the program's sp_runtime.h inline
+# allocations would bypass the per-instance backend.
+MCFLAGS="-DSP_MULTI_CTX -include $LIB/sp_mem_override.h"
 NTHREADS="${NTHREADS:-4}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -77,7 +81,7 @@ REF="$(cat "$TMP/ref.txt")"
 "$SP" --no-main --entry sp_prog_entry -o "$TMP/stress.c" "$TMP/stress.rb" >/dev/null 2>&1
 
 # 1. single instance (NTHREADS=1) matches -E
-if cc -O2 -w -DSP_MULTI_CTX -DNTHREADS=1 -I"$LIB" -I"$LIB/regexp" \
+if cc -O2 -w $MCFLAGS -DNTHREADS=1 -I"$LIB" -I"$LIB/regexp" \
       "$TMP/stress.c" "$TMP/host.c" "$MC" -lm -lcrypt -lpthread -o "$TMP/single" 2>"$TMP/e1"; then
   if [ "$("$TMP/single")" != "$REF" ]; then echo "FAIL: single-instance output differs from -E"; fail=1; fi
 else
@@ -85,7 +89,7 @@ else
 fi
 
 # 2. N instances on N threads: every line must equal the reference
-if cc -O2 -w -DSP_MULTI_CTX -DNTHREADS=$NTHREADS -I"$LIB" -I"$LIB/regexp" \
+if cc -O2 -w $MCFLAGS -DNTHREADS=$NTHREADS -I"$LIB" -I"$LIB/regexp" \
       "$TMP/stress.c" "$TMP/host.c" "$MC" -lm -lcrypt -lpthread -o "$TMP/multi" 2>"$TMP/e2"; then
   "$TMP/multi" > "$TMP/multi.out" 2>&1; rc=$?
   n_ok="$(grep -cx "$REF" "$TMP/multi.out")"
@@ -101,7 +105,7 @@ fi
 RT_MEMBERS="sp_bigint sp_crypto sp_pack sp_time sp_core sp_net sp_system sp_ctx sp_gc sp_alloc sp_marshal sp_format sp_string sp_inspect sp_array sp_str sp_re sp_random sp_fiber sp_sched sp_io sp_cold"
 SRCS=""; for m in $RT_MEMBERS; do SRCS="$SRCS $LIB/$m.c"; done
 RESRC="$LIB/regexp/re_compile.c $LIB/regexp/re_exec.c $LIB/regexp/re_utf8.c"
-if cc -g -O1 -w -DSP_MULTI_CTX -DNTHREADS=$NTHREADS -fsanitize=address \
+if cc -g -O1 -w $MCFLAGS -DNTHREADS=$NTHREADS -fsanitize=address \
       -I"$LIB" -I"$LIB/regexp" "$TMP/stress.c" "$TMP/host.c" $SRCS $RESRC \
       -lm -lcrypt -lpthread -o "$TMP/asan" 2>"$TMP/e3"; then
   ASAN_OPTIONS=detect_leaks=0 "$TMP/asan" > "$TMP/asan.out" 2>&1; rc=$?

@@ -9,8 +9,11 @@
 /* malloc_trim is glibc's (returns freed arena pages to the OS); no other libc
    has it, so elsewhere the trim below is a no-op and RSS is whatever the
    allocator keeps. An interposed allocator (jemalloc) makes it a no-op on
-   glibc too: the symbol walks glibc's own, then empty, arena. */
-#if defined(__GLIBC__)
+   glibc too: the symbol walks glibc's own, then empty, arena. Under
+   SP_MULTI_CTX allocation is routed through the instance backend (not the
+   process heap), and pulling in <malloc.h> after sp_mem_override.h has
+   remapped malloc/free is pointless, so the trim is a no-op there too. */
+#if defined(__GLIBC__) && !defined(SP_MULTI_CTX)
 #include <malloc.h>
 #else
 #define malloc_trim(x) ((void)0)
