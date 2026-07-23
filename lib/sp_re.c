@@ -17,6 +17,7 @@
 const char *sp_sprintf(const char *fmt, ...);  /* defined in the generated TU */
 
 /* match-register state (declared extern in sp_re.h). */
+#ifndef SP_MULTI_CTX  /* sp_ctx-field macros under SP_MULTI_CTX */
 SP_TLS const char *sp_re_captures[10] = {0};   /* per-worker (SP_TLS); see sp_re.h */
 SP_TLS int sp_re_caps[64];
 SP_TLS const char *sp_re_last_str = NULL;
@@ -27,6 +28,7 @@ SP_TLS const char *sp_re_match_str = NULL;
    sp_re_last_str so the accessors below can build them on demand. */
 SP_TLS const char *sp_re_match_pre = NULL;
 SP_TLS const char *sp_re_match_post = NULL;
+#endif
 static SP_TLS int sp_re_pp_span[2] = {-1, -1};
 const char *sp_re_startup_err = NULL;
 
@@ -57,8 +59,10 @@ const char *sp_re_last_paren_match(void) {
 }
 void sp_MatchData_scan(void *p);   /* defined below */
 static sp_MatchData *sp_md_alloc(int pairs);   /* defined below */
+#ifndef SP_MULTI_CTX
 SP_TLS int sp_re_last_ncap = 0;
 SP_TLS const mrb_regexp_pattern *sp_re_last_pat = NULL;
+#endif
 /* $~ as a first-class MatchData: build it lazily from the TLS match
    registers (NULL when the last match failed / none ran). */
 sp_MatchData *sp_re_last_matchdata(void) {

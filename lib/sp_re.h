@@ -48,6 +48,7 @@ typedef struct { const char *source; int ncap; const mrb_regexp_pattern *pat; in
    the matching -DSP_THREADS so the storage class agrees. Plain globals
    otherwise. (The GC hook marking only the current worker's registers is
    generalized to all workers when N>1 lands.) ---- */
+#ifndef SP_MULTI_CTX  /* sp_ctx-field macros under SP_MULTI_CTX (sp_ctx.h) */
 extern SP_TLS const char *sp_re_captures[10];
 extern SP_TLS int sp_re_caps[64];
 extern SP_TLS const char *sp_re_last_str;
@@ -55,6 +56,7 @@ extern SP_TLS const mrb_regexp_pattern *sp_re_last_pat;
 extern SP_TLS const char *sp_re_match_str;
 extern SP_TLS const char *sp_re_match_pre;
 extern SP_TLS const char *sp_re_match_post;
+#endif
 const char *sp_re_pre_match(void);   /* $` , built on demand */
 const char *sp_re_post_match(void);  /* $' , built on demand */
 extern const char *sp_re_startup_err;

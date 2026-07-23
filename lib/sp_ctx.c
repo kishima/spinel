@@ -54,6 +54,9 @@ sp_ctx *sp_instance_create(const sp_instance_config *cfg) {
   sp_ctx *c = (sp_ctx *)a(cfg->mem_ud, sizeof(sp_ctx));
   if (!c) return NULL;
   memset(c, 0, sizeof(*c));
+  /* The default Random is marked through a rooted pointer: the byte before
+     it must say "no header here" (see sp_random.c). */
+  c->random_default_box.guard[sizeof c->random_default_box.guard - 1] = (char)0xfd;
   c->mem_ud = cfg->mem_ud;
   c->mem_alloc = a; c->mem_realloc = re; c->mem_dealloc = de;
 

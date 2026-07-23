@@ -3,6 +3,7 @@
 #include <time.h>
 #include <string.h>
 #include "sp_random.h"
+#include "sp_ctx.h"
 #include "sp_crypto.h"   /* sp_crypto_entropy: the one secure source */
 #include "sp_alloc.h"
 #include <math.h>    /* isnan/isinf for the EDOM domain checks */   /* sp_str_alloc / sp_str_set_len / sp_float_to_s / sp_raise_cls / sp_gc_alloc */
@@ -34,8 +35,16 @@ void sp_pcg_seed(uint64_t *state, uint64_t seed) {
 
 /* Per-worker (SP_TLS) in the threaded build: the generator has no
    internal lock, so a shared stream would race across workers. */
+#ifndef SP_MULTI_CTX
 static SP_TLS uint64_t sp_krand_state;
+#else
+/* per-ctx (sp_ctx.h) */
+#endif
+#ifndef SP_MULTI_CTX
 static SP_TLS int sp_krand_seeded;
+#else
+/* per-ctx (sp_ctx.h) */
+#endif
 
 void sp_krand_srand(uint64_t seed) {
   sp_pcg_seed(&sp_krand_state, seed);
@@ -82,9 +91,14 @@ sp_float sp_krand_float(void) {
    crashed inside the mark walk. Same shape, and the same reason, as the root
    fiber in sp_fiber.c: the guard array is exactly one alignment unit, so its
    last byte always directly precedes the struct with no padding in between. */
-static SP_TLS struct { char guard[_Alignof(sp_Random)]; sp_Random r; } sp_random_default_box
+#ifndef SP_MULTI_CTX
+static SP_TLS sp_Random_box sp_random_default_box
     = { .guard = { [_Alignof(sp_Random) - 1] = (char)0xfd } };
 #define sp_random_default (sp_random_default_box.r)
+#else
+/* per-ctx (sp_ctx.h); sp_instance_create lays the same 0xfd guard byte */
+#define sp_random_default (SP_CTX()->random_default_box.r)
+#endif
 uint64_t sp_random_next(sp_Random *r) {SP_GC_ROOT(r);
   if (r == &sp_random_default) return sp_krand_next();
   uint64_t hi = sp_pcg32_adv(&r->state);
@@ -231,7 +245,11 @@ const char *sp_Random_inspect(sp_Random *r) {SP_GC_ROOT(r);
    one). Every rand form -- bare/int/range, shuffle, sample, the Random
    default instance -- draws from that one stream, so a single srand makes
    them all reproducible. */
+#ifndef SP_MULTI_CTX
 static SP_TLS sp_int sp_kernel_seed = 0;
+#else
+/* per-ctx (sp_ctx.h) */
+#endif
 sp_int sp_kernel_srand(sp_int seed) {
   sp_int prev = sp_kernel_seed;
   sp_kernel_seed = seed;

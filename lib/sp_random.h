@@ -27,7 +27,9 @@ sp_float sp_krand_float(void);           /* uniform [0, 1) */
 typedef struct { uint64_t state; sp_int seed; } sp_Random;
 /* The default instance is private to sp_random.c: it is a guarded static
    there (see the comment on its box) and is reached only through
-   sp_random_default_get below. */
+   sp_random_default_get below. The box type is shared with sp_ctx.h, which
+   holds the same guarded instance per context under SP_MULTI_CTX. */
+typedef struct { char guard[_Alignof(sp_Random)]; sp_Random r; } sp_Random_box;
 uint64_t sp_random_next(sp_Random *r);
 sp_Random *sp_Random_new(sp_int seed);
 sp_Random *sp_Random_new_float(sp_float f);
