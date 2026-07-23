@@ -3,8 +3,8 @@
 #include <time.h>
 #include <string.h>
 #include "sp_random.h"
+#include "sp_alloc.h"   /* sp_str_alloc / sp_str_set_len / sp_float_to_s / sp_raise_cls / sp_gc_alloc; pulls sp_gc.h -> sp_RbVal before sp_ctx.h */
 #include "sp_ctx.h"
-#include "sp_alloc.h"   /* sp_str_alloc / sp_str_set_len / sp_float_to_s / sp_raise_cls / sp_gc_alloc */
 #include "sp_format.h"  /* sp_Range_inspect */
 #include "sp_str.h"     /* sp_sprintf (defined in the generated TU) */
 

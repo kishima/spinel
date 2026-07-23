@@ -16,13 +16,21 @@
  * Only library-side state (compiled once into libspinel_rt.a and shared across
  * translation units) needs relocation. sp_runtime.h statics are per-TU already
  * (it is included only by the generated program) and stay put.
+ *
+ * INCLUDE ORDER: the sp_ctx struct has fields typed as sp_RbVal / sp_sym
+ * (the value-introspection vtable), which are defined in sp_gc.h. So this
+ * header must be reached AFTER sp_gc.h. That is automatic on the normal path
+ * (sp_gc.h includes this header right after defining sp_RbVal); a .c file that
+ * includes sp_ctx.h directly must include sp_gc.h (or a header that pulls it)
+ * first. sp_ctx.h intentionally does NOT include sp_gc.h -- that would be a
+ * cycle (sp_gc.h needs this header's macros before its own inline helpers).
  */
 #ifndef SP_CTX_H
 #define SP_CTX_H
 
 #include <stddef.h>
 #include <stdint.h>
-#include "sp_types.h"    /* mrb_int */
+#include "sp_types.h"    /* mrb_int, sp_sym */
 #include "sp_random.h"   /* sp_Random (by value below); pulls only sp_types.h */
 
 struct sp_gc_hdr;
@@ -84,6 +92,22 @@ typedef struct sp_ctx {
   int        krand_seeded;
   sp_Random  random_default;
   mrb_int    kernel_seed;
+
+  /* --- value-introspection vtable (was sp_gc.c; set per program by the
+   *     generated TU init, so per-instance). sp_marshal_v stays shared for now
+   *     (by-value sp_marshal_vt; Marshal is rarely used concurrently). --- */
+  const char *(*sym_name_fn)(sp_sym);
+  int         (*json_kind_fn)(sp_RbVal);
+  mrb_int     (*json_len_fn)(sp_RbVal);
+  sp_RbVal    (*json_aref_fn)(sp_RbVal, mrb_int);
+  void        (*json_hpair_fn)(sp_RbVal, mrb_int, sp_RbVal *, sp_RbVal *);
+  sp_RbVal    (*json_mk_hash_fn)(void);
+  sp_sym      (*json_sym_intern_fn)(const char *);
+  void        (*json_hash_set_fn)(sp_RbVal, const char *, sp_RbVal);
+  const char *(*poly_inspect_fn)(sp_RbVal);
+  sp_RbVal    (*obj_to_hash_fn)(sp_RbVal);
+  const char *(*obj_inspect_fn)(int cls_id, void *p);
+  const char *(*obj_to_s_fn)(int cls_id, void *p);
 
   /* --- allocation backend (T3-2 sp_mem_* hooks) --- */
   void  *mem_ud;
@@ -164,6 +188,20 @@ void    sp_instance_destroy(sp_ctx *ctx);
 #define sp_krand_seeded     (SP_CTX()->krand_seeded)
 #define sp_random_default   (SP_CTX()->random_default)
 #define sp_kernel_seed      (SP_CTX()->kernel_seed)
+
+/* value-introspection vtable (per program) */
+#define sp_sym_name_fn         (SP_CTX()->sym_name_fn)
+#define sp_json_kind_fn        (SP_CTX()->json_kind_fn)
+#define sp_json_len_fn         (SP_CTX()->json_len_fn)
+#define sp_json_aref_fn        (SP_CTX()->json_aref_fn)
+#define sp_json_hpair_fn       (SP_CTX()->json_hpair_fn)
+#define sp_json_mk_hash_fn     (SP_CTX()->json_mk_hash_fn)
+#define sp_json_sym_intern_fn  (SP_CTX()->json_sym_intern_fn)
+#define sp_json_hash_set_fn    (SP_CTX()->json_hash_set_fn)
+#define sp_poly_inspect_fn     (SP_CTX()->poly_inspect_fn)
+#define sp_obj_to_hash_fn      (SP_CTX()->obj_to_hash_fn)
+#define sp_obj_inspect_fn      (SP_CTX()->obj_inspect_fn)
+#define sp_obj_to_s_fn         (SP_CTX()->obj_to_s_fn)
 
 /* Root-stack capacity: dynamic per instance. */
 #define SP_GC_ROOTS_CAP (SP_CTX()->gc_roots_cap)

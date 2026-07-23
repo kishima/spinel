@@ -191,6 +191,7 @@ extern void (*sp_gc_str_sweep_hook)(void);
  * same idiom as the GC hooks above. sp_sym_name maps a symbol id to its name;
  * sp_json_kind classifies a boxed value (1=array, 2=hash, 0=other); len/aref
  * iterate any array; hpair yields a hash's (key,value) at insertion index i. */
+#ifndef SP_MULTI_CTX  /* sp_ctx-field macros under SP_MULTI_CTX (sp_ctx.h) */
 extern const char *(*sp_sym_name_fn)(sp_sym);
 extern int (*sp_json_kind_fn)(sp_RbVal);
 extern mrb_int (*sp_json_len_fn)(sp_RbVal);
@@ -218,6 +219,7 @@ extern const char *(*sp_obj_inspect_fn)(int cls_id, void *p);
 /* Same shape for user #to_s: sp_poly_to_s's OBJ default consults it so a
    boxed user object with a custom to_s renders through it. */
 extern const char *(*sp_obj_to_s_fn)(int cls_id, void *p);
+#endif /* !SP_MULTI_CTX */
 
 /* ---- Hot inline mark helpers (inlined into both sides) ----
  * String tag bytes: 0xfe heap-unmarked -> 0xfc marked; others skipped. */

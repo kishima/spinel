@@ -31,8 +31,10 @@ void (*sp_gc_mark_suspended_fibers_hook)(void) = NULL;
 void (*sp_gc_mark_globals_hook)(void) = NULL;
 void (*sp_gc_str_sweep_hook)(void) = NULL;
 #endif
-/* Runtime vtable hooks set once by the generated TU (sp_re_init). Not yet
- * per-instance (see multi-instance.md: pending per-program vtable analysis). */
+/* Runtime value-introspection vtable, set once per program by the generated TU
+ * (sp_re_init / codegen init). Per-instance under SP_MULTI_CTX (sp_ctx-field
+ * macros in sp_ctx.h) so instance A dispatches over A's symbol/class tables. */
+#ifndef SP_MULTI_CTX
 const char *(*sp_sym_name_fn)(sp_sym) = NULL;
 int (*sp_json_kind_fn)(sp_RbVal) = NULL;
 mrb_int (*sp_json_len_fn)(sp_RbVal) = NULL;
@@ -45,7 +47,8 @@ const char *(*sp_poly_inspect_fn)(sp_RbVal) = NULL;
 sp_RbVal (*sp_obj_to_hash_fn)(sp_RbVal) = NULL;
 const char *(*sp_obj_inspect_fn)(int cls_id, void *p) = NULL;
 const char *(*sp_obj_to_s_fn)(int cls_id, void *p) = NULL;
-sp_marshal_vt sp_marshal_v = {0};   /* filled by the generated TU (sp_re_init) */
+#endif
+sp_marshal_vt sp_marshal_v = {0};   /* filled by the generated TU (sp_re_init); shared (see multi-instance.md) */
 
 /* ---- Collector-private globals ----
  * Under SP_MULTI_CTX these are sp_ctx fields (macros in sp_ctx.h); the static
