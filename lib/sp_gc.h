@@ -86,6 +86,14 @@ extern SP_TLS int sp_gc_nroots;
    stack above, so relocating them is layout-neutral. */
 static inline int _sp_gc_root_push(void **p) {
   if (sp_gc_nroots < SP_GC_ROOTS_CAP) { sp_gc_roots[sp_gc_nroots++] = p; return 1; }
+#ifdef SP_MULTI_CTX
+  /* A per-instance root stack can be sized small (sp_instance_config
+     .root_stack_entries). Dropping a root here would silently un-anchor a live
+     object and corrupt the heap on the next collection (a non-deterministic
+     use-after-free), so fail loudly and deterministically instead. The default
+     build keeps the historical return-0 behavior (its cap is large/fixed). */
+  sp_gc_root_overflow_die();
+#endif
   return 0;
 }
 static inline void _sp_gc_root_pop(int *added) { if (*added) sp_gc_nroots--; }
@@ -172,6 +180,10 @@ void sp_gc_enforce_mem_limit(void);
 void sp_gc_collect_retune(void);
 void sp_stw_collect(void);
 void sp_oom_die(void);
+/* SP_MULTI_CTX only: fatal handler for GC-root-stack overflow (see
+   _sp_gc_root_push). Declared unconditionally; defined and referenced only under
+   SP_MULTI_CTX, so the default build neither calls nor links it. */
+void sp_gc_root_overflow_die(void);
 
 /* ---- Embedder callbacks supplied by the generated TU ----
  * The collector cannot own the program's roots or string heap (they are

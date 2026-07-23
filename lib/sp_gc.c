@@ -72,6 +72,9 @@ static int sp_gc_max_bytes_init = 0;
 /* Issue #755: bail out cleanly on OOM rather than returning NULL into a
    caller that would deref it next. */
 void sp_oom_die(void){fputs("unhandled exception: out of memory\n",stderr);exit(1);}
+#ifdef SP_MULTI_CTX
+void sp_gc_root_overflow_die(void){fputs("unhandled exception: GC root stack overflow (sp_instance_config.root_stack_entries too small)\n",stderr);abort();}
+#endif
 
 /* ---- GC verify (SPINEL_GC_VERIFY=1): a sorted snapshot of every
  * registered header, so the scan-time membership test is O(log n). ---- */
