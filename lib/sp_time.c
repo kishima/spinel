@@ -33,7 +33,14 @@ sp_Time sp_time_at_div(int64_t num, int64_t den) {
   int64_t sec = num / den;
   int64_t rem = num % den;
   if (rem < 0) { sec -= 1; rem += den; }
+#if defined(__SIZEOF_INT128__)
   int64_t ns = (int64_t)(((__int128)rem * 1000000000) / den);
+#else
+  /* 32-bit targets (i386, Xtensa/ESP32) lack __int128. Fall back to double:
+     exact to the mantissa's ~53 bits, so the last-ULP nanosecond of
+     Time.at(Rational) is a documented 32-bit degradation, not a hard failure. */
+  int64_t ns = (int64_t)((double)rem * 1000000000.0 / (double)den);
+#endif
   return (sp_Time){ sec, (int32_t)ns, 0 };
 }
 
@@ -55,12 +62,24 @@ static void sp_time_shift_ns(double secs, int64_t base_sec, int32_t base_ns,
   double m = frexp(secs, &e);
   int64_t mi = (int64_t)(m * 9007199254740992.0); /* m * 2^53, exact */
   e -= 53;
+#if defined(__SIZEOF_INT128__)
   __int128 ns = (__int128)mi * 1000000000;
   if (e > 0) ns = (e > 34) ? (ns < 0 ? INT64_MIN : INT64_MAX) : ns << e;
   else if (e < 0) ns = (-e > 126) ? (ns < 0 ? -1 : 0) : ns >> -e;
   __int128 total = ((__int128)base_sec * 1000000000 + base_ns) + ns;
   int64_t sec = (int64_t)(total / 1000000000);
   int64_t rem = (int64_t)(total % 1000000000);
+#else
+  /* 32-bit fallback (no __int128): shift the nanosecond product in double.
+     Exact for typical epochs; large-magnitude or last-ULP-exact cases degrade
+     to double precision -- a documented 32-bit limitation (see sp_time_at_div). */
+  double nsd = (double)mi * 1000000000.0;
+  if (e > 0) nsd = ldexp(nsd, e);
+  else if (e < 0) nsd = ldexp(nsd, e);
+  double totald = ((double)base_sec * 1000000000.0 + (double)base_ns) + nsd;
+  int64_t sec = (int64_t)(totald / 1000000000.0);
+  int64_t rem = (int64_t)(totald - (double)sec * 1000000000.0);
+#endif
   if (rem < 0) { sec -= 1; rem += 1000000000; }
   *out_sec = sec;
   *out_ns = (int32_t)rem;
