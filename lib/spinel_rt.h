@@ -3071,12 +3071,16 @@ SP_TLS unsigned char sp_pending_exc_flags = 0;
 /* Signal.trap state (defined with the Signal machinery below; declared here
    so the GC mark hook can keep installed proc handlers live). */
 struct sp_Proc;
-#ifdef SPINEL_EXT_HOST
+#if defined(SP_MULTI_CTX)
+/* relocated into sp_ctx for multi-program linking (T4-0) */
+#elif defined(SPINEL_EXT_HOST)
 extern const char *sp_trap_state[SP_SIG_MAX];
 #else
 const char *sp_trap_state[SP_SIG_MAX];
 #endif
-#ifdef SPINEL_EXT_HOST
+#if defined(SP_MULTI_CTX)
+/* relocated into sp_ctx (T4-0) */
+#elif defined(SPINEL_EXT_HOST)
 extern struct sp_Proc *sp_trap_proc[SP_SIG_MAX];
 #else
 struct sp_Proc *sp_trap_proc[SP_SIG_MAX];
@@ -12483,7 +12487,9 @@ static sp_RbVal sp_enum_next_boxed(sp_RbVal v) {
    generated proc body live in the same TU and share this slot. Per-worker
    (SP_TLS): a concurrent Proc#call would otherwise race, and no safepoint poll
    lies between a body's store and the call site's read. */
-#ifdef SPINEL_EXT_HOST
+#if defined(SP_MULTI_CTX)
+/* relocated into sp_ctx (T4-0) */
+#elif defined(SPINEL_EXT_HOST)
 extern SP_TLS sp_RbVal _sp_proc_poly_ret;
 #else
 SP_TLS sp_RbVal _sp_proc_poly_ret;
@@ -12502,7 +12508,9 @@ SP_TLS const char *sp_callee_name = NULL;
    parameter reads its argument back from here, since it does not fit the
    sp_int[] slot. Declared here so the compose/curry/to_proc trampolines
    below can publish through it like every generated call site does. */
-#ifdef SPINEL_EXT_HOST
+#if defined(SP_MULTI_CTX)
+/* relocated into sp_ctx (T4-0) */
+#elif defined(SPINEL_EXT_HOST)
 extern SP_TLS sp_RbVal _sp_proc_poly_args[SP_PROC_ARG_SLOTS];
 #else
 SP_TLS sp_RbVal _sp_proc_poly_args[SP_PROC_ARG_SLOTS];

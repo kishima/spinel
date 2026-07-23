@@ -36,6 +36,10 @@
 struct sp_gc_hdr;
 struct sp_str_hdr;
 struct mrb_regexp_pattern;   /* re_* engine handle (sp_re.h) */
+struct sp_Proc;              /* proc handle (sp_runtime.h); trap_proc[] below */
+#ifndef SP_PROC_ARG_SLOTS
+#define SP_PROC_ARG_SLOTS 64   /* token-identical to sp_proc.h */
+#endif
 
 /* Per-instance runtime state. Field names are the original global names with
  * their sp_/sp_gc_ prefix dropped; the compat macros below re-attach them. */
@@ -123,6 +127,15 @@ typedef struct sp_ctx {
   int         (*obj_conv_fn)(int cls_id, void *p, int which, sp_RbVal *out);
   const char *(*obj_cls_name_fn)(int cls_id);
   int         (*class_le_id_fn)(int sub, int super);
+
+  /* --- TU-provided per-program state, relocated for multi-program linking
+   *     (T4-0). These are defined non-static in sp_runtime.h, so two generated
+   *     TUs in one binary would collide; under SP_MULTI_CTX they live here
+   *     instead (data below; the ~20 TU functions become per-ctx pointers). --- */
+  sp_RbVal        proc_poly_ret;         /* was _sp_proc_poly_ret */
+  sp_RbVal        proc_poly_args[SP_PROC_ARG_SLOTS]; /* was _sp_proc_poly_args */
+  const char     *trap_state[SP_SIG_MAX];/* was sp_trap_state */
+  struct sp_Proc *trap_proc[SP_SIG_MAX]; /* was sp_trap_proc */
 
   /* --- allocation backend (T3-2 sp_mem_* hooks) --- */
   void  *mem_ud;
@@ -240,6 +253,14 @@ void    sp_instance_destroy(sp_ctx *ctx);
 
 /* Root-stack capacity: dynamic per instance. */
 #define SP_GC_ROOTS_CAP (SP_CTX()->gc_roots_cap)
+
+/* TU-provided per-program state relocated into the ctx (T4-0, data). The
+ * runtime .c files reach these through these macros; sp_runtime.h drops the
+ * corresponding definitions under SP_MULTI_CTX. */
+#define _sp_proc_poly_ret   (SP_CTX()->proc_poly_ret)
+#define _sp_proc_poly_args   (SP_CTX()->proc_poly_args)
+#define sp_trap_state        (SP_CTX()->trap_state)
+#define sp_trap_proc         (SP_CTX()->trap_proc)
 
 /* The libc allocation names are remapped to per-instance wrappers by
  * sp_mem_override.h, force-included into every mc TU (see that header and
