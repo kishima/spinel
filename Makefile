@@ -233,11 +233,15 @@ build/sp_system.o: lib/sp_system.c lib/sp_system.h
 	@mkdir -p build
 	$(CC) -c -O2 -Wno-all $(SEC_FLAGS) -Ilib lib/sp_system.c -o build/sp_system.o
 
-build/sp_gc.o: lib/sp_gc.c lib/sp_gc.h lib/sp_types.h
+build/sp_ctx.o: lib/sp_ctx.c lib/sp_ctx.h lib/sp_gc.h lib/sp_types.h
+	@mkdir -p build
+	$(CC) -c -O2 -Wno-all $(SEC_FLAGS) -Ilib lib/sp_ctx.c -o build/sp_ctx.o
+
+build/sp_gc.o: lib/sp_gc.c lib/sp_gc.h lib/sp_ctx.h lib/sp_types.h
 	@mkdir -p build
 	$(CC) -c -O2 -Wno-all $(SEC_FLAGS) -Ilib lib/sp_gc.c -o build/sp_gc.o
 
-build/sp_alloc.o: lib/sp_alloc.c lib/sp_alloc.h lib/sp_gc.h lib/sp_types.h
+build/sp_alloc.o: lib/sp_alloc.c lib/sp_alloc.h lib/sp_gc.h lib/sp_ctx.h lib/sp_types.h
 	@mkdir -p build
 	$(CC) -c -O2 -Wno-all $(SEC_FLAGS) -Ilib lib/sp_alloc.c -o build/sp_alloc.o
 
@@ -311,7 +315,7 @@ build/sp_cold.o: lib/sp_cold.c $(RT_HDRS)
 
 SP_RT_LIB = lib/libspinel_rt.a
 
-RT_MEMBERS = sp_bigint sp_crypto sp_pack sp_time sp_core sp_net sp_system sp_gc sp_alloc sp_marshal sp_format sp_string sp_inspect sp_array sp_str sp_re sp_random sp_fiber sp_sched sp_io sp_cold
+RT_MEMBERS = sp_bigint sp_crypto sp_pack sp_time sp_core sp_net sp_system sp_ctx sp_gc sp_alloc sp_marshal sp_format sp_string sp_inspect sp_array sp_str sp_re sp_random sp_fiber sp_sched sp_io sp_cold
 
 $(SP_RT_LIB): $(RE_OBJ) $(addprefix build/,$(addsuffix .o,$(RT_MEMBERS)))
 	ar rcs $@ $^
@@ -341,6 +345,28 @@ build/mt/%.o: lib/%.c $(RT_HDRS)
 RE_MT_OBJ = $(patsubst lib/regexp/%.c,build/mt/regexp/%.o,$(RE_SRC))
 
 $(SP_RT_MT_LIB): $(RE_MT_OBJ) $(addprefix build/mt/,$(addsuffix .o,$(RT_MEMBERS)))
+	ar rcs $@ $^
+
+# ---- Multi-instance runtime variant (-DSP_MULTI_CTX) ----
+# Same sources, compiled so the relocated globals live in a per-instance sp_ctx
+# (see docs/internals/multi-instance.md). Independent of the mt/tsan variants;
+# SP_MULTI_CTX + SP_THREADS is a #error. A program built against this archive
+# must have the host call sp_ctx_set_current(sp_instance_create(...)) before its
+# entry. Built on demand: `make lib/libspinel_rt_mc.a`.
+SP_RT_MC_LIB = lib/libspinel_rt_mc.a
+MC_DEF = -DSP_MULTI_CTX
+
+build/mc/regexp/%.o: lib/regexp/%.c lib/regexp/re_internal.h
+	@mkdir -p $(@D)
+	$(CC) -c -O2 $(SEC_FLAGS) $(MC_DEF) -Ilib/regexp $< -o $@
+
+build/mc/%.o: lib/%.c $(RT_HDRS)
+	@mkdir -p $(@D)
+	$(CC) -c -O2 -Wno-all $(SEC_FLAGS) $(MC_DEF) -Ilib -Ilib/regexp $< -o $@
+
+RE_MC_OBJ = $(patsubst lib/regexp/%.c,build/mc/regexp/%.o,$(RE_SRC))
+
+$(SP_RT_MC_LIB): $(RE_MC_OBJ) $(addprefix build/mc/,$(addsuffix .o,$(RT_MEMBERS)))
 	ar rcs $@ $^
 
 # ---- ThreadSanitizer build of the threaded runtime (Phase 1 validation) ----

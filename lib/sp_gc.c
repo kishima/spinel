@@ -16,7 +16,11 @@
 #include "sp_gc.h"
 #include "sp_marshal.h"   /* sp_marshal_vt -- the instance lives here (always linked) */
 
-/* ---- Globals shared with the generated TU (declared extern in sp_gc.h) ---- */
+/* ---- Globals shared with the generated TU (declared extern in sp_gc.h) ----
+ * Under SP_MULTI_CTX these names are macros onto sp_ctx fields (sp_ctx.h), so
+ * their storage lives in the instance and is initialized by
+ * sp_instance_create(); the definitions here are dropped. */
+#ifndef SP_MULTI_CTX
 SP_TLS void **sp_gc_roots[SP_GC_STACK_MAX];   /* per-worker (SP_TLS); see sp_gc.h */
 SP_TLS int sp_gc_nroots = 0;
 sp_gc_hdr *sp_gc_heap = NULL;
@@ -26,6 +30,9 @@ int sp_gc_cycle = 0;
 void (*sp_gc_mark_suspended_fibers_hook)(void) = NULL;
 void (*sp_gc_mark_globals_hook)(void) = NULL;
 void (*sp_gc_str_sweep_hook)(void) = NULL;
+#endif
+/* Runtime vtable hooks set once by the generated TU (sp_re_init). Not yet
+ * per-instance (see multi-instance.md: pending per-program vtable analysis). */
 const char *(*sp_sym_name_fn)(sp_sym) = NULL;
 int (*sp_json_kind_fn)(sp_RbVal) = NULL;
 mrb_int (*sp_json_len_fn)(sp_RbVal) = NULL;
@@ -40,16 +47,20 @@ const char *(*sp_obj_inspect_fn)(int cls_id, void *p) = NULL;
 const char *(*sp_obj_to_s_fn)(int cls_id, void *p) = NULL;
 sp_marshal_vt sp_marshal_v = {0};   /* filled by the generated TU (sp_re_init) */
 
-/* ---- Collector-private globals ---- */
+/* ---- Collector-private globals ----
+ * Under SP_MULTI_CTX these are sp_ctx fields (macros in sp_ctx.h); the static
+ * definitions are dropped so the state is per-instance. */
+#define SP_GC_MARK_STACK_MAX (1024*64)
+#ifndef SP_MULTI_CTX
 static int sp_gc_verify = 0;
 static sp_gc_hdr *sp_gc_old_heap = NULL;
-#define SP_GC_MARK_STACK_MAX (1024*64)
 static void **sp_gc_mark_stack = NULL;
 static int sp_gc_mark_top = 0;
 static sp_gc_hdr **sp_gc_vsnap = NULL;
 static size_t sp_gc_vsnap_n = 0, sp_gc_vsnap_cap = 0;
 static size_t sp_gc_max_bytes = 0;
 static int sp_gc_max_bytes_init = 0;
+#endif
 #define SP_GC_FULL_INTERVAL 8
 
 /* Issue #755: bail out cleanly on OOM rather than returning NULL into a
@@ -62,9 +73,13 @@ static int sp_gc_vsnap_cmp(const void *a, const void *b){ uintptr_t x=(uintptr_t
 static void sp_gc_vsnap_push(sp_gc_hdr *h){ if(sp_gc_vsnap_n==sp_gc_vsnap_cap){ size_t c=sp_gc_vsnap_cap?sp_gc_vsnap_cap*2:1024; sp_gc_hdr**n=(sp_gc_hdr**)realloc(sp_gc_vsnap,c*sizeof(sp_gc_hdr*)); if(!n)sp_oom_die(); sp_gc_vsnap=n; sp_gc_vsnap_cap=c; } sp_gc_vsnap[sp_gc_vsnap_n++]=h; }
 static void sp_gc_verify_snapshot(void){ sp_gc_vsnap_n=0; for(sp_gc_hdr*p=sp_gc_heap;p;p=p->next)sp_gc_vsnap_push(p); for(sp_gc_hdr*p=sp_gc_old_heap;p;p=p->next)sp_gc_vsnap_push(p); if(sp_gc_vsnap_n>1)qsort(sp_gc_vsnap,sp_gc_vsnap_n,sizeof(sp_gc_hdr*),sp_gc_vsnap_cmp); }
 static int sp_gc_obj_registered(sp_gc_hdr *h){ uintptr_t hv=(uintptr_t)h; size_t lo=0,hi=sp_gc_vsnap_n; while(lo<hi){ size_t m=lo+(hi-lo)/2; uintptr_t x=(uintptr_t)sp_gc_vsnap[m]; if(x==hv)return 1; if(x<hv)lo=m+1; else hi=m; } return 0; }
-/* Verify diagnostics: which phase/slot the bad pointer came from. */
+/* Verify diagnostics: which phase/slot the bad pointer came from. The phase
+ * label stays process-shared (a diagnostic string); the offending ctx pointer
+ * is per-instance under SP_MULTI_CTX (macro in sp_ctx.h). */
 const char *sp_gc_dbg_phase = "?";
+#ifndef SP_MULTI_CTX
 void *sp_gc_dbg_ctx = NULL;
+#endif
 static void sp_gc_verify_fail(void *obj, sp_gc_hdr *h){
   fprintf(stderr, "  [phase=%s ctx=%p]\n", sp_gc_dbg_phase, sp_gc_dbg_ctx);
   fprintf(stderr,
@@ -81,7 +96,11 @@ static void sp_gc_verify_fail(void *obj, sp_gc_hdr *h){
   abort();
 }
 __attribute__((constructor)) static void sp_gc_debug_env(void){
+#ifndef SP_MULTI_CTX
   const char *v=getenv("SPINEL_GC_VERIFY"); sp_gc_verify=(v&&*v&&*v!='0');
+#endif
+  /* SP_MULTI_CTX: gc_verify is per-instance, read from the env in
+     sp_instance_create (no current ctx exists at process-constructor time). */
 }
 
 /* Tag byte preceding `obj`: 0xfe heap-unmarked -> 0xfc; 0xfc/0xff/0xfd/0xf1

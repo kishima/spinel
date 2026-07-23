@@ -4,20 +4,27 @@
    lib/*.c allocate onto one heap. sp_str_sweep is registered with the object GC
    via a constructor, so a collection triggered from any TU also reaps strings. */
 #include "sp_alloc.h"
+#include "sp_ctx.h"
 
+/* Under SP_MULTI_CTX these names are sp_ctx-field macros (sp_ctx.h); the
+   instance owns the storage, so the definitions here are dropped. */
+#ifndef SP_MULTI_CTX
 sp_str_hdr *sp_str_heap = NULL;
 size_t sp_str_heap_bytes = 0;
 size_t sp_str_threshold = 256 * 1024;
 size_t sp_str_threshold_init = 256 * 1024;
 int sp_str_stress_checked = 0;
+#endif
 
 const char sp_str_empty_data[] = "\xff";
 
 /* Object-heap collection threshold (was per-TU static in sp_runtime.h; now
    shared so sp_gc_alloc can live in sp_alloc.h and lib TUs allocate too). */
+#ifndef SP_MULTI_CTX
 size_t sp_gc_threshold = 256 * 1024;
 size_t sp_gc_threshold_init = 256 * 1024;
 int sp_gc_stress_checked = 0;
+#endif
 
 #ifdef SP_THREADS
 pthread_mutex_t sp_heap_lock = PTHREAD_MUTEX_INITIALIZER;   /* see sp_alloc.h */

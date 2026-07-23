@@ -62,11 +62,21 @@ typedef struct { int tag; int cls_id; union { mrb_int i; const char *s; mrb_floa
 #define SP_GC_STACK_MAX 65536
 #endif
 #define SP_GC_FULL_INTERVAL 8
+
+/* Per-instance runtime context (SP_MULTI_CTX). Inert in the default build;
+   under SP_MULTI_CTX it turns the collector globals below into ctx-field
+   macros and provides SP_GC_ROOTS_CAP (the dynamic root-stack bound). Included
+   here after SP_GC_STACK_MAX so its default SP_GC_ROOTS_CAP can reference it. */
+#include "sp_ctx.h"
+
 /* Per-worker root stack (SP_TLS): each OS worker carries the active roots of
    the green thread it runs, swapped with the fiber's saved_roots on a context
-   switch. Plain globals in the single-threaded build. */
+   switch. Plain globals in the single-threaded build. Under SP_MULTI_CTX these
+   names are ctx-field macros (see sp_ctx.h), so the extern decls are dropped. */
+#ifndef SP_MULTI_CTX
 extern SP_TLS void **sp_gc_roots[SP_GC_STACK_MAX];
 extern SP_TLS int sp_gc_nroots;
+#endif
 
 /* GC root tracking. SP_GC_ROOT registers a stack-resident root with a
    cleanup-attribute sentinel so it auto-pops when its declaring scope ends.
@@ -75,7 +85,7 @@ extern SP_TLS int sp_gc_nroots;
    can root their in-flight objects too. Helpers touch only the extern root
    stack above, so relocating them is layout-neutral. */
 static inline int _sp_gc_root_push(void **p) {
-  if (sp_gc_nroots < SP_GC_STACK_MAX) { sp_gc_roots[sp_gc_nroots++] = p; return 1; }
+  if (sp_gc_nroots < SP_GC_ROOTS_CAP) { sp_gc_roots[sp_gc_nroots++] = p; return 1; }
   return 0;
 }
 static inline void _sp_gc_root_pop(int *added) { if (*added) sp_gc_nroots--; }
@@ -95,11 +105,13 @@ static inline void sp_gc_cleanup(int *p) { sp_gc_nroots = *p; }
    header walk. Use this for string parameters in runtime helpers. */
 #define SP_GC_ROOT_STR(v) int __attribute__((cleanup(_sp_gc_root_pop))) _SP_GC_CONCAT(_sp_gcr_, __COUNTER__) = _sp_gc_root_push((void**)((uintptr_t)&(v) | (uintptr_t)2))
 #define SP_GC_RESTORE() sp_gc_nroots = _gc_saved
+#ifndef SP_MULTI_CTX  /* under SP_MULTI_CTX these are sp_ctx-field macros (sp_ctx.h) */
 extern sp_gc_hdr *sp_gc_heap;
 extern size_t sp_gc_bytes;
 extern size_t sp_gc_old_bytes;
 extern int sp_gc_cycle;
 extern void (*sp_gc_mark_suspended_fibers_hook)(void);
+#endif
 
 /* Heap byte-counter accounting. The container growth paths (sp_array.h,
    sp_alloc.h's PolyArray, the string builder) adjust sp_gc_bytes inline
@@ -168,8 +180,10 @@ void sp_oom_die(void);
  * installs its mark-roots and string-sweep callbacks here at startup;
  * sp_gc_mark_all / sp_gc_collect invoke them through these pointers, the
  * same way fibers register sp_gc_mark_suspended_fibers_hook. */
+#ifndef SP_MULTI_CTX  /* sp_ctx-field macros under SP_MULTI_CTX (sp_ctx.h) */
 extern void (*sp_gc_mark_globals_hook)(void);
 extern void (*sp_gc_str_sweep_hook)(void);
+#endif
 
 /* ---- value-introspection hooks (set by the generated TU at startup) ----
  * lib/sp_json.c (and other cold readers) own no container types; they reach the
