@@ -1,12 +1,12 @@
 /* sp_ctx.c -- per-instance runtime context implementation (SP_MULTI_CTX).
  * Inert in the default (single-context) build. See sp_ctx.h and
  * docs/internals/multi-instance.md. */
+#include "sp_gc.h"   /* sp_RbVal etc. for the sp_ctx struct; also pulls sp_ctx.h */
 #include "sp_ctx.h"
 
 #ifdef SP_MULTI_CTX
 #include <stdlib.h>
 #include <string.h>
-#include "sp_gc.h"   /* SP_GC_STACK_MAX default */
 
 /* Reference current-instance accessor: a thread-local pointer. One instance
  * runs per OS thread (programs are internally single-threaded). The ESP-IDF

@@ -83,6 +83,10 @@ void (*sp_gc_str_sweep_hook)(void) = NULL;
 #endif
 int (*sp_gc_str_major_due_hook)(void) = NULL;
 int sp_gc_root_phase = 0;   /* the mark is walking the C roots (see sp_gc_mark_all) */
+/* Runtime value-introspection vtable, set once per program by the generated TU
+ * (sp_re_init / codegen init). Per-instance under SP_MULTI_CTX (sp_ctx-field
+ * macros in sp_ctx.h) so instance A dispatches over A's symbol/class tables. */
+#ifndef SP_MULTI_CTX
 const char *(*sp_sym_name_fn)(sp_sym) = NULL;
 int (*sp_json_kind_fn)(sp_RbVal) = NULL;
 sp_int (*sp_json_len_fn)(sp_RbVal) = NULL;
@@ -111,7 +115,8 @@ const char *(*sp_obj_to_path_fn)(int cls_id, void *p) = NULL;
 int (*sp_obj_conv_fn)(int cls_id, void *p, int which, sp_RbVal *out) = NULL;
 const char *(*sp_obj_cls_name_fn)(int cls_id) = NULL;
 int (*sp_class_le_id_fn)(int sub, int super) = NULL;
-sp_marshal_vt sp_marshal_v = {0};   /* filled by the generated TU (sp_tu_init) */
+#endif
+sp_marshal_vt sp_marshal_v = {0};   /* filled by the generated TU (sp_tu_init); shared (see multi-instance.md) */
 
 /* The concurrent sweep (sp_sched.c): start takes the lists the barrier
    detached and sweeps them beside the mutators; wait, at the next barrier,

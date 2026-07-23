@@ -571,6 +571,7 @@ extern int (*sp_gc_str_major_due_hook)(void);
  * same idiom as the GC hooks above. sp_sym_name maps a symbol id to its name;
  * sp_json_kind classifies a boxed value (1=array, 2=hash, 0=other); len/aref
  * iterate any array; hpair yields a hash's (key,value) at insertion index i. */
+#ifndef SP_MULTI_CTX  /* sp_ctx-field macros under SP_MULTI_CTX (sp_ctx.h) */
 extern const char *(*sp_sym_name_fn)(sp_sym);
 extern int (*sp_json_kind_fn)(sp_RbVal);
 extern sp_int (*sp_json_len_fn)(sp_RbVal);
@@ -643,6 +644,7 @@ extern const char *(*sp_obj_cls_name_fn)(int cls_id);
    class bank installs it; NULL means only an exact id can be trusted. A
    pointer array of one class checks a stored object against it (#4486). */
 extern int (*sp_class_le_id_fn)(int sub, int super);
+#endif /* !SP_MULTI_CTX */
 
 /* ---- Hot inline mark helpers (inlined into both sides) ----
  * String tag bytes: 0xfe heap-unmarked -> 0xfc marked; others skipped. */
