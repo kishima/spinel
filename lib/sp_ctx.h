@@ -213,11 +213,9 @@ void    sp_instance_destroy(sp_ctx *ctx);
 /* Root-stack capacity: dynamic per instance. */
 #define SP_GC_ROOTS_CAP (SP_CTX()->gc_roots_cap)
 
-/* --- allocation wrappers (route through the instance's backend) --- */
-void *sp_mem_alloc(size_t n);    /* zero-filled */
-void *sp_mem_zalloc(size_t n);   /* zero-filled (alias for clarity) */
-void *sp_mem_realloc(void *p, size_t n);
-void  sp_mem_free(void *p);
+/* The libc allocation names are remapped to per-instance wrappers by
+ * sp_mem_override.h, force-included into every mc TU (see that header and
+ * sp_ctx.c). Nothing to declare here. */
 
 #else  /* !SP_MULTI_CTX -- default: inert, globals stay as-is */
 
@@ -225,13 +223,6 @@ void  sp_mem_free(void *p);
 
 /* Default build: TU hook installers run before main as process constructors. */
 #define SP_TU_CTOR __attribute__((constructor))
-
-/* Direct libc; folds to the original call, zero cost. */
-#include <stdlib.h>
-static inline void *sp_mem_alloc(size_t n)            { return malloc(n); }
-static inline void *sp_mem_zalloc(size_t n)           { return calloc(1, n); }
-static inline void *sp_mem_realloc(void *p, size_t n) { return realloc(p, n); }
-static inline void  sp_mem_free(void *p)              { free(p); }
 
 #endif /* SP_MULTI_CTX */
 

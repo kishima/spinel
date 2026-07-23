@@ -8,6 +8,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* This file DEFINES the allocation wrappers that sp_mem_override.h (force-
+ * included into every mc TU, this one included) maps the libc names onto, so
+ * the bodies below must reach the real libc, not themselves. Undo the remap. */
+#undef malloc
+#undef calloc
+#undef realloc
+#undef free
+#undef strdup
+
 /* Defined in sp_alloc.c (also declared in sp_alloc.h). Wired into the object
  * collector per instance below, replacing the default build's constructor. */
 void sp_str_sweep(void);
@@ -20,23 +29,49 @@ static __thread sp_ctx *g_sp_ctx = NULL;
 sp_ctx *sp_ctx_current(void)          { return g_sp_ctx; }
 void    sp_ctx_set_current(sp_ctx *c) { g_sp_ctx = c; }
 
-/* --- allocation backend wrappers --- */
-void *sp_mem_alloc(size_t n) {
+/* --- allocation wrappers (targets of the sp_mem_override.h macros) ---
+ *
+ * Route through the current instance's backend when one is set; otherwise fall
+ * back to libc. In a running program an instance is always current with a
+ * backend (sp_instance_create sets one, and the host calls sp_ctx_set_current
+ * before the entry), so the fallback only covers any stray pre-entry
+ * allocation -- which must not then be freed across the boundary.
+ *
+ * The backend MUST zero-fill (sp_instance_config contract), so sp_mem_malloc
+ * yields zeroed memory too: the runtime's calloc-style assumptions hold
+ * uniformly and malloc/calloc collapse onto one hook (the modest zero-fill cost
+ * is tracked in `make bench`). Exhaustion goes through sp_oom_die rather than
+ * returning NULL into a caller that would deref it. */
+void *sp_mem_malloc(size_t n) {
+  if (n == 0) n = 1;
   sp_ctx *c = g_sp_ctx;
-  void *p = c->mem_alloc(c->mem_ud, n);   /* backend zero-fills */
+  void *p = (c && c->mem_alloc) ? c->mem_alloc(c->mem_ud, n) : calloc(1, n);
   if (!p) sp_oom_die();
   return p;
 }
-void *sp_mem_zalloc(size_t n) { return sp_mem_alloc(n); }
+void *sp_mem_calloc(size_t nmemb, size_t size) {
+  size_t n;
+  if (__builtin_mul_overflow(nmemb, size, &n)) sp_oom_die();
+  return sp_mem_malloc(n);
+}
 void *sp_mem_realloc(void *p, size_t n) {
   sp_ctx *c = g_sp_ctx;
-  void *r = c->mem_realloc(c->mem_ud, p, n);
+  void *r = (c && c->mem_realloc) ? c->mem_realloc(c->mem_ud, p, n) : realloc(p, n);
   if (n && !r) sp_oom_die();
   return r;
 }
 void sp_mem_free(void *p) {
+  if (!p) return;
   sp_ctx *c = g_sp_ctx;
-  c->mem_dealloc(c->mem_ud, p);
+  if (c && c->mem_dealloc) c->mem_dealloc(c->mem_ud, p);
+  else free(p);
+}
+char *sp_mem_strdup(const char *s) {
+  if (!s) return NULL;
+  size_t len = strlen(s) + 1;
+  char *d = (char *)sp_mem_malloc(len);
+  memcpy(d, s, len);
+  return d;
 }
 
 /* --- default libc backend (used when cfg->alloc is NULL) --- */

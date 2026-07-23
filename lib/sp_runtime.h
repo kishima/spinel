@@ -52,10 +52,12 @@ static int sp_bt_n = 0;
 #include <sys/file.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
-#if !defined(__APPLE__) && !defined(__FreeBSD__)
+#if !defined(__APPLE__) && !defined(__FreeBSD__) && !defined(SP_MULTI_CTX)
 #include <malloc.h>
 #else
-/* Darwin's libc has no malloc_trim; make it a no-op so call sites stay portable. */
+/* Darwin's libc has no malloc_trim; make it a no-op so call sites stay portable.
+   Also no-op under SP_MULTI_CTX (allocation is routed through the instance
+   backend; see lib/sp_mem_override.h). */
 #define malloc_trim(x) ((void)0)
 #endif
 #ifndef MAP_ANONYMOUS

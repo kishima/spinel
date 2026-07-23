@@ -354,9 +354,13 @@ $(SP_RT_MT_LIB): $(RE_MT_OBJ) $(addprefix build/mt/,$(addsuffix .o,$(RT_MEMBERS)
 # must have the host call sp_ctx_set_current(sp_instance_create(...)) before its
 # entry. Built on demand: `make lib/libspinel_rt_mc.a`.
 SP_RT_MC_LIB = lib/libspinel_rt_mc.a
-MC_DEF = -DSP_MULTI_CTX
+# -include forces the allocation-override header (lib/sp_mem_override.h) into
+# every mc TU, so libc malloc/calloc/realloc/free/strdup route through the
+# per-instance backend. A program built against this archive must compile its
+# generated C with the same flags (see test/multi_ctx/smoke.sh).
+MC_DEF = -DSP_MULTI_CTX -include lib/sp_mem_override.h
 
-build/mc/regexp/%.o: lib/regexp/%.c lib/regexp/re_internal.h
+build/mc/regexp/%.o: lib/regexp/%.c lib/regexp/re_internal.h lib/sp_mem_override.h
 	@mkdir -p $(@D)
 	$(CC) -c -O2 $(SEC_FLAGS) $(MC_DEF) -Ilib/regexp $< -o $@
 
@@ -520,10 +524,17 @@ test-lib-mode: $(SPINEL) $(SP_RT_LIB)
 # Multi-instance runtime smoke test (-DSP_MULTI_CTX). Builds the on-demand MC
 # archive, then runs a single-instance and an N-thread concurrent program plus
 # an ASan pass (see test/multi_ctx/smoke.sh). Standalone like test-lib-mode: a
-# --no-main MC unit is not part of the .rb/.expected oracle harness.
+# --no-main MC unit is not part of the .rb/.expected oracle harness. The nm gate
+# runs first so a build that lost the allocation override fails fast.
 .PHONY: test-multi-ctx
-test-multi-ctx: $(SPINEL) $(SP_RT_MC_LIB)
+test-multi-ctx: check-mc-syms
 	@SPINEL=$(SPINEL) ./test/multi_ctx/smoke.sh
+
+# nm gate: verify the allocation override reached every mc TU (only sp_ctx.o may
+# reference libc malloc/free/...). See test/multi_ctx/check_syms.sh.
+.PHONY: check-mc-syms
+check-mc-syms: $(SPINEL) $(SP_RT_MC_LIB)
+	@SPINEL=$(SPINEL) ./test/multi_ctx/check_syms.sh
 
 # The actual run. rbs-test golden-checks the RBS extractor (cheap, C-only).
 # rbs-seed-test checks the seeds actually reach the analyzer (incl. nested

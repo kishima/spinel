@@ -6,10 +6,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
-#if !defined(__APPLE__) && !defined(__FreeBSD__)
+#if !defined(__APPLE__) && !defined(__FreeBSD__) && !defined(SP_MULTI_CTX)
 #include <malloc.h>
 #else
-/* Darwin's libc has no malloc_trim; make it a no-op so call sites stay portable. */
+/* Darwin's libc has no malloc_trim; make it a no-op so call sites stay portable.
+   Under SP_MULTI_CTX allocation is routed through the instance backend (not the
+   process heap), and pulling in <malloc.h> after sp_mem_override.h has remapped
+   malloc/free is pointless, so drop the include and no-op the trim there too. */
 #define malloc_trim(x) ((void)0)
 #endif
 #include <unistd.h>
