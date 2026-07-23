@@ -53,7 +53,8 @@ extern pthread_mutex_t sp_heap_lock;
    thread is pinned to its worker (home_wid), so only that worker's M ever pushes
    onto its list, and it pumps one green thread at a time: no concurrent push.
    The collector reaches every list under stop-the-world (all workers parked).
-   The single-threaded build keeps one global list and stays byte-identical. */
+   The single-threaded build keeps one global list and stays byte-identical.
+   Under SP_MULTI_CTX the relocated names are sp_ctx-field macros (sp_ctx.h). */
 /* Generations. Allocation always pushes onto the YOUNG list; a string still
    live at a sweep moves to the OLD list, which ordinary (minor) sweeps then
    skip. Without this every sweep walks the entire live set, so a program
@@ -100,16 +101,20 @@ typedef struct {
 } sp_str_wslot_t;
 extern sp_str_wslot_t sp_str_wslot[SP_MAX_WORKERS];
 #else
+#ifndef SP_MULTI_CTX
 extern sp_str_hdr *sp_str_heap;          /* young list head */
 extern size_t sp_str_heap_bytes;         /* young string-heap bytes */
+#endif
 extern sp_str_hdr *sp_str_old;           /* old list head */
 extern size_t sp_str_old_bytes;          /* old string-heap bytes */
 #endif
 extern size_t sp_str_old_threshold;      /* old bytes that trigger a major sweep */
 extern size_t sp_str_old_threshold_init; /* recompute floor for the above */
+#ifndef SP_MULTI_CTX
 extern size_t sp_str_threshold;          /* string-GC trigger (own heuristic) */
 extern size_t sp_str_threshold_init;     /* recompute floor */
 extern int    sp_str_stress_checked;     /* one-shot SPINEL_GC_STRESS check */
+#endif
 extern int    sp_gc_stress_pin;          /* stress caps the retunes at the 2048 base (#3513) */
 #ifdef SP_THREADS
 void sp_alloc_stress_init(void);         /* race-free one-shot stress check (pre-helpers) */
@@ -684,9 +689,11 @@ extern int sp_gc_str_major_sched;
 extern size_t sp_gc_str_majors;
 extern int sp_gc_obj_budget_fixed;
 extern int sp_gc_str_budget_fixed;
+#ifndef SP_MULTI_CTX  /* sp_ctx-field macros under SP_MULTI_CTX (sp_ctx.h) */
 extern size_t sp_gc_threshold;
 extern size_t sp_gc_threshold_init;
 extern int sp_gc_stress_checked;
+#endif
 void *sp_gc_alloc(size_t sz, void (*fin)(void *), void (*scn)(void *));
 void *sp_gc_alloc_nogc(size_t sz, void (*fin)(void *), void (*scn)(void *));
 

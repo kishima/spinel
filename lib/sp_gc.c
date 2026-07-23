@@ -30,13 +30,18 @@ int sp_str_verify_probe_hit(void);
 void sp_str_verify_probe_done(void);
 int  sp_str_sweep_begin(int *major);   /* lib/sp_alloc.c: the string heap's gate, taken here before the concurrent sweep starts */
 
-/* ---- Globals shared with the generated TU (declared extern in sp_gc.h) ---- */
-SP_TLS void **sp_gc_roots[SP_GC_STACK_MAX];   /* per-worker (SP_TLS); see sp_gc.h */
+/* ---- Globals shared with the generated TU (declared extern in sp_gc.h) ----
+ * Under SP_MULTI_CTX these names are macros onto sp_ctx fields (sp_ctx.h), so
+ * their storage lives in the instance and is initialized by
+ * sp_instance_create(); the definitions here are dropped. */
 /* The overflow segment: roots SP_GC_STACK_MAX and up, grown on demand and
    kept for the worker's life. A push the array cannot take used to be dropped
    on the floor, and a deep enough recursion then had the collector free
-   strings its live frames still named. */
+   strings its live frames still named. Under SP_MULTI_CTX it stays NULL: the
+   instance's root stack is one segment (below). */
 SP_TLS void ***sp_gc_roots_ext = NULL;
+#ifndef SP_MULTI_CTX
+SP_TLS void **sp_gc_roots[SP_GC_STACK_MAX];   /* per-worker (SP_TLS); see sp_gc.h */
 static SP_TLS int sp_gc_roots_ext_cap = 0;
 int sp_gc_roots_ext_reserve(int n) {
   int need = n - SP_GC_STACK_MAX;
@@ -55,17 +60,27 @@ int sp_gc_root_push_slow(void **p) {
   return 1;
 }
 SP_TLS int sp_gc_nroots = 0;
+#else
+/* SP_MULTI_CTX: the root stack is one per-instance segment of SP_GC_ROOTS_CAP
+   entries, sized by sp_instance_create; there is no overflow segment. */
+int sp_gc_roots_ext_reserve(int n) { return n <= SP_GC_ROOTS_CAP; }
+int sp_gc_root_push_slow(void **p) { (void)p; return 0; }
+#endif
 #ifdef SP_THREADS
 sp_gc_wslot_t sp_gc_wslot[SP_MAX_WORKERS];   /* per-worker young head + flush delta, cache-line padded */
 #else
+#ifndef SP_MULTI_CTX
 sp_gc_hdr *sp_gc_heap = NULL;
 #endif
+#endif
+#ifndef SP_MULTI_CTX
 size_t sp_gc_bytes = 0;
 size_t sp_gc_old_bytes = 0;
 int sp_gc_cycle = 0;
 void (*sp_gc_mark_suspended_fibers_hook)(void) = NULL;
 void (*sp_gc_mark_globals_hook)(void) = NULL;
 void (*sp_gc_str_sweep_hook)(void) = NULL;
+#endif
 int (*sp_gc_str_major_due_hook)(void) = NULL;
 int sp_gc_root_phase = 0;   /* the mark is walking the C roots (see sp_gc_mark_all) */
 const char *(*sp_sym_name_fn)(sp_sym) = NULL;
@@ -109,9 +124,13 @@ int sp_gc_conc_on = -1;          /* SPINEL_GC_CONC=0 turns the concurrent sweep 
 int sp_gc_conc_promote = 0;      /* this cycle's mark promotes what it marks (the sweep is concurrent) */
 size_t sp_gc_mk_bytes = 0, sp_gc_mk_young_bytes = 0;   /* bytes the mark reached, and of those the young ones */
 SP_TLS int sp_gc_in_sweeper = 0; /* a sweeper thread: finalizers skip the per-worker byte accounting */
-/* ---- Collector-private globals ---- */
+/* ---- Collector-private globals ----
+ * Under SP_MULTI_CTX the relocated ones are sp_ctx fields (macros in sp_ctx.h);
+ * the static definitions are dropped so the state is per-instance. */
+#ifndef SP_MULTI_CTX
 static int sp_gc_verify = 0;
 static sp_gc_hdr *sp_gc_old_heap = NULL;
+#endif
 /* The mark stack grows on demand: overflowing it used to drop the walk into
    recursive scanning, and a live set of a few hundred thousand containers
    (an A* frontier of [vertex, priority] pairs) then overflowed the C stack
@@ -119,8 +138,10 @@ static sp_gc_hdr *sp_gc_old_heap = NULL;
 #define SP_GC_MARK_STACK_MAX (1024*64)
 /* Per thread: the collector's, and under the parallel mark each helper's
    own; a scan pushes onto the stack of the thread running it. */
+#ifndef SP_MULTI_CTX
 static SP_TLS void **sp_gc_mark_stack = NULL;
 static SP_TLS int sp_gc_mark_top = 0;
+#endif
 static SP_TLS int sp_gc_mark_cap = 0;
 /* What this thread's marking counted, folded into the totals when its
    drain ends (a shared counter per marked object would bounce a line
@@ -132,10 +153,12 @@ unsigned long long sp_gc_ph_mk_by_helpers=0, sp_gc_ph_mk_spills=0, sp_gc_ph_mk_t
 double sp_gc_ph_mk_drain=0, sp_gc_ph_mk_join=0, sp_gc_ph_mk_idle=0;
 int sp_gc_par_mark_on = -1;      /* SPINEL_GC_PAR_MARK=0 turns it off */
 static void sp_gc_mkl_fold(void);
+#ifndef SP_MULTI_CTX
 static sp_gc_hdr **sp_gc_vsnap = NULL;
 static size_t sp_gc_vsnap_n = 0, sp_gc_vsnap_cap = 0;
 static size_t sp_gc_max_bytes = 0;
 static int sp_gc_max_bytes_init = 0;
+#endif
 #define SP_GC_FULL_INTERVAL 8
 #define SP_GC_FULL_INTERVAL_MIN 1   /* the adaptive floor under the minor mark: every cycle full */
 #define SP_GC_PROMOTED_DEAD_CUT (1.0/16.0)   /* dead-at-full per minor, as a share of the live set */
@@ -187,10 +210,14 @@ static void sp_gc_verify_snapshot(void){ sp_gc_vsnap_n=0;
 #endif
   for(sp_gc_hdr*p=sp_gc_old_heap;p;p=p->next)sp_gc_vsnap_push(p); if(sp_gc_vsnap_n>1)qsort(sp_gc_vsnap,sp_gc_vsnap_n,sizeof(sp_gc_hdr*),sp_gc_vsnap_cmp); }
 static int sp_gc_obj_registered(sp_gc_hdr *h){ if(sp_slab_owns(h))return sp_slab_is_live(h)&&!sp_slab_is_str(h); uintptr_t hv=(uintptr_t)h; size_t lo=0,hi=sp_gc_vsnap_n; while(lo<hi){ size_t m=lo+(hi-lo)/2; uintptr_t x=(uintptr_t)sp_gc_vsnap[m]; if(x==hv)return 1; if(x<hv)lo=m+1; else hi=m; } return 0; }
-/* Verify diagnostics: which phase/slot the bad pointer came from. */
+/* Verify diagnostics: which phase/slot the bad pointer came from. The phase
+ * label stays process-shared (a diagnostic string); the offending ctx pointer
+ * is per-instance under SP_MULTI_CTX (macro in sp_ctx.h). */
 int sp_gc_verify_on(void) { return sp_gc_verify; }
 const char *sp_gc_dbg_phase = "?";
+#ifndef SP_MULTI_CTX
 void *sp_gc_dbg_ctx = NULL;
+#endif
 static void sp_gc_verify_fail(void *obj, sp_gc_hdr *h){
   fprintf(stderr, "  [phase=%s ctx=%p]\n", sp_gc_dbg_phase, sp_gc_dbg_ctx);
   sp_slab_describe(h);
@@ -240,7 +267,11 @@ static void sp_gc_fault_report(int sig) {
   raise(sig);
 }
 __attribute__((constructor)) static void sp_gc_debug_env(void){
+#ifndef SP_MULTI_CTX
   const char *v=getenv("SPINEL_GC_VERIFY"); sp_gc_verify=(v&&*v&&*v!='0');
+#endif
+  /* SP_MULTI_CTX: gc_verify is per-instance, read from the env in
+     sp_instance_create (no current ctx exists at process-constructor time). */
   { const char *ph=getenv("SPINEL_GC_PHASES"); sp_gc_ph_on=(ph&&*ph&&*ph!='0'); }
   { const char *fi=getenv("SPINEL_GC_FULL_INTERVAL");
     if(fi&&*fi){ int n=atoi(fi); if(n>0&&n<=4096){ sp_gc_full_interval=n; sp_gc_full_interval_fixed=1; } } }

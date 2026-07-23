@@ -73,11 +73,21 @@ typedef struct { int tag; int cls_id; union { sp_int i; const char *s; sp_float 
 #define SP_GC_STACK_MAX 65536
 #endif
 #define SP_GC_FULL_INTERVAL 8
+
+/* Per-instance runtime context (SP_MULTI_CTX). Inert in the default build;
+   under SP_MULTI_CTX it turns the collector globals below into ctx-field
+   macros and provides SP_GC_ROOTS_CAP (the dynamic root-stack bound). Included
+   here after SP_GC_STACK_MAX so its default SP_GC_ROOTS_CAP can reference it. */
+#include "sp_ctx.h"
+
 /* Per-worker root stack (SP_TLS): each OS worker carries the active roots of
    the green thread it runs, swapped with the fiber's saved_roots on a context
-   switch. Plain globals in the single-threaded build. */
+   switch. Plain globals in the single-threaded build. Under SP_MULTI_CTX these
+   names are ctx-field macros (see sp_ctx.h), so the extern decls are dropped. */
+#ifndef SP_MULTI_CTX
 extern SP_TLS void **sp_gc_roots[SP_GC_STACK_MAX];
 extern SP_TLS int sp_gc_nroots;
+#endif
 extern SP_TLS int sp_gc_in_sweeper;   /* set on a sweeper thread: finalizers skip the per-worker byte accounting */
 
 /* GC root tracking. SP_GC_ROOT registers a stack-resident root with a
@@ -92,10 +102,14 @@ extern SP_TLS void ***sp_gc_roots_ext;
 int sp_gc_root_push_slow(void **p);
 int sp_gc_roots_ext_reserve(int n);   /* room for n roots in total; 0 on OOM */
 static inline void **sp_gc_root_at(int i) {
+#ifdef SP_MULTI_CTX
+  return sp_gc_roots[i];   /* one per-instance segment of SP_GC_ROOTS_CAP entries */
+#else
   return i < SP_GC_STACK_MAX ? sp_gc_roots[i] : sp_gc_roots_ext[i - SP_GC_STACK_MAX];
+#endif
 }
 static inline int _sp_gc_root_push(void **p) {
-  if (sp_gc_nroots < SP_GC_STACK_MAX) { sp_gc_roots[sp_gc_nroots++] = p; return 1; }
+  if (sp_gc_nroots < SP_GC_ROOTS_CAP) { sp_gc_roots[sp_gc_nroots++] = p; return 1; }
   return sp_gc_root_push_slow(p);
 }
 static inline void _sp_gc_root_pop(int *added) { if (*added) sp_gc_nroots--; }
@@ -267,14 +281,18 @@ typedef struct {
 } sp_gc_wslot_t;
 extern sp_gc_wslot_t sp_gc_wslot[SP_MAX_WORKERS];
 #else
+#ifndef SP_MULTI_CTX  /* under SP_MULTI_CTX these are sp_ctx-field macros (sp_ctx.h) */
 extern sp_gc_hdr *sp_gc_heap;
+#endif
 #endif
 /* Current mark generation (see sp_gc_hdr.marked in sp_types.h). */
 extern unsigned sp_gc_mark_gen;
 extern void (*sp_gc_obj_retune_hook)(size_t before);
+#ifndef SP_MULTI_CTX  /* under SP_MULTI_CTX these are sp_ctx-field macros (sp_ctx.h) */
 extern size_t sp_gc_bytes;
 extern size_t sp_gc_old_bytes;
 extern int sp_gc_cycle;
+#endif
 /* SPINEL_GC_STATS=1 (report in sp_alloc.c): how many collections ran and what
    they cost. A program whose GC share of CPU climbs with concurrency looks
    from outside the process exactly like one collecting more often, and there
@@ -284,7 +302,9 @@ extern int sp_gc_cycle;
 extern unsigned long long sp_gc_stat_collections;
 extern unsigned long long sp_gc_stat_fulls;
 extern double sp_gc_stat_seconds;
+#ifndef SP_MULTI_CTX  /* under SP_MULTI_CTX this is an sp_ctx-field macro (sp_ctx.h) */
 extern void (*sp_gc_mark_suspended_fibers_hook)(void);
+#endif
 
 /* Heap byte-counter accounting. The container growth paths (sp_array.h,
    sp_alloc.h's PolyArray, the string builder) adjust sp_gc_bytes inline
@@ -535,8 +555,10 @@ void sp_oom_die(void);
  * installs its mark-roots and string-sweep callbacks here at startup;
  * sp_gc_mark_all / sp_gc_collect invoke them through these pointers, the
  * same way fibers register sp_gc_mark_suspended_fibers_hook. */
+#ifndef SP_MULTI_CTX  /* sp_ctx-field macros under SP_MULTI_CTX (sp_ctx.h) */
 extern void (*sp_gc_mark_globals_hook)(void);
 extern void (*sp_gc_str_sweep_hook)(void);
+#endif
 /* Whether the string heap's own schedule (or its growth backstop) would take
    a major this cycle. A string major needs a whole-heap mark, so under the
    minor mark the object cycle it lands on has to be full; the collector asks

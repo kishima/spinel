@@ -13,6 +13,7 @@
 #include <pthread.h>   /* the thread that does the writing */
 #endif
 #include "sp_alloc.h"
+#include "sp_ctx.h"
 #include "sp_dtoa.h"   /* sp_format_float for locale-independent Float#to_s */
 /* Per-site allocation attribution (SPINEL_ALLOC_SITES=1, on top of
    SPINEL_ALLOC_REPORT). The site is the raw return address of the frame that
@@ -40,8 +41,12 @@ size_t sp_str_bytes_total(void) {
   return s;
 }
 #else
+/* Under SP_MULTI_CTX these names are sp_ctx-field macros (sp_ctx.h); the
+   instance owns the storage, so the definitions here are dropped. */
+#ifndef SP_MULTI_CTX
 sp_str_hdr *sp_str_heap = NULL;
 size_t sp_str_heap_bytes = 0;
+#endif
 sp_str_hdr *sp_str_old = NULL;
 size_t sp_str_old_bytes = 0;
 #endif
@@ -165,9 +170,11 @@ static size_t sp_str_live_total(void) {
   return sp_str_heap_bytes + sp_str_old_total();
 #endif
 }
+#ifndef SP_MULTI_CTX
 size_t sp_str_threshold = 256 * 1024;
 size_t sp_str_threshold_init = 256 * 1024;
 int sp_str_stress_checked = 0;
+#endif
 
 const char sp_str_empty_data[] = "\xff";
 
@@ -175,9 +182,11 @@ SP_TLS int sp_ffi_bin_len = 0;   /* see sp_alloc.h: byte count for :binstr / :cb
 
 /* Object-heap collection threshold (was per-TU static in spinel_rt.h; now
    shared so sp_gc_alloc can live in sp_alloc.h and lib TUs allocate too). */
+#ifndef SP_MULTI_CTX
 size_t sp_gc_threshold = 256 * 1024;
 size_t sp_gc_threshold_init = 256 * 1024;
 int sp_gc_stress_checked = 0;
+#endif
 /* Stress pins the threshold instead of merely seeding it: the retunes float
    the trigger to live*4 with the base as a FLOOR, so on any program whose
    live set outgrows the base, stress stopped stressing after the first

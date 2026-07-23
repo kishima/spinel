@@ -475,7 +475,7 @@ build/sp_cold.o: lib/sp_cold.c $(RT_HDRS)
 
 SP_RT_LIB = lib/libspinel_rt.a
 
-RT_MEMBERS = sp_bigint sp_crypto sp_pack sp_time sp_core sp_net sp_system sp_gc sp_slab sp_alloc sp_dtoa sp_marshal sp_format sp_string sp_inspect sp_array sp_str sp_hash sp_proc sp_exc sp_re sp_random sp_fiber sp_sched sp_io sp_iobuffer sp_cold sp_process sp_process_status
+RT_MEMBERS = sp_bigint sp_crypto sp_pack sp_time sp_core sp_net sp_system sp_ctx sp_gc sp_slab sp_alloc sp_dtoa sp_marshal sp_format sp_string sp_inspect sp_array sp_str sp_hash sp_proc sp_exc sp_re sp_random sp_fiber sp_sched sp_io sp_iobuffer sp_cold sp_process sp_process_status
 
 $(SP_RT_LIB): $(RE_OBJ) $(addprefix build/,$(addsuffix .o,$(RT_MEMBERS)))
 	ar rcs $@ $^
@@ -504,6 +504,28 @@ build/mt/%.o: lib/%.c $(RT_HDRS)
 RE_MT_OBJ = $(patsubst lib/regexp/%.c,build/mt/regexp/%.o,$(RE_SRC))
 
 $(SP_RT_MT_LIB): $(RE_MT_OBJ) $(addprefix build/mt/,$(addsuffix .o,$(RT_MEMBERS)))
+	ar rcs $@ $^
+
+# ---- Multi-instance runtime variant (-DSP_MULTI_CTX) ----
+# Same sources, compiled so the relocated globals live in a per-instance sp_ctx
+# (see docs/internals/multi-instance.md). Independent of the mt/tsan variants;
+# SP_MULTI_CTX + SP_THREADS is a #error. A program built against this archive
+# must have the host call sp_ctx_set_current(sp_instance_create(...)) before its
+# entry. Built on demand: `make lib/libspinel_rt_mc.a`.
+SP_RT_MC_LIB = lib/libspinel_rt_mc.a
+MC_DEF = -DSP_MULTI_CTX
+
+build/mc/regexp/%.o: lib/regexp/%.c lib/regexp/re_internal.h lib/regexp/re_casefold.h lib/regexp/re_ctype.h
+	@mkdir -p $(@D)
+	$(CC) -c $(COPT) $(SEC_FLAGS) $(RE_CASE_FLAGS) $(MC_DEF) -Ilib/regexp $< -o $@
+
+build/mc/%.o: lib/%.c $(RT_HDRS)
+	@mkdir -p $(@D)
+	$(CC) -c $(COPT) -Wno-all $(SEC_FLAGS) $(MC_DEF) -Ilib -Ilib/regexp $< -o $@
+
+RE_MC_OBJ = $(patsubst lib/regexp/%.c,build/mc/regexp/%.o,$(RE_SRC))
+
+$(SP_RT_MC_LIB): $(RE_MC_OBJ) $(addprefix build/mc/,$(addsuffix .o,$(RT_MEMBERS)))
 	ar rcs $@ $^
 
 # ---- ThreadSanitizer build of the threaded runtime (Phase 1 validation) ----
