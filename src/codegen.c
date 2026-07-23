@@ -12387,6 +12387,8 @@ char *codegen_program(const NodeTable *nt) {
   }
 
   size_t main_frame_ins = 0;
+  /* every entry form installs the per-instance TU hooks first (see below) */
+#define SP_TU_CTX_INIT_CALL "#ifdef SP_MULTI_CTX\n    sp_tu_ctx_init();\n#endif\n"
   if (g_ext_init_name) {
     /* Layer-1 extension emission (ext-design.md): the toplevel body brackets
        into the host-callable init function instead of main, and a tiny
@@ -12406,6 +12408,7 @@ char *codegen_program(const NodeTable *nt) {
     buf_printf(body, "void %s(void){\n", g_ext_init_name);
     buf_puts(body, "    SP_GC_SAVE();\n");
     main_frame_ins = body->len;
+    buf_puts(body, SP_TU_CTX_INIT_CALL);
     if (g_re_init_needed) buf_puts(body, "    sp_tu_init();\n");
     if (g_uses_threads) buf_puts(body, "    sp_sched_init();\n");
     if (g_uses_program_name) buf_puts(body, "    sp_program_name = sp_str_empty;\n");
@@ -12419,6 +12422,7 @@ char *codegen_program(const NodeTable *nt) {
     buf_printf(body, "int %s(void){\n", g_entry_name);
     buf_puts(body, "    SP_GC_SAVE();\n");
     main_frame_ins = body->len;
+    buf_puts(body, SP_TU_CTX_INIT_CALL);
     if (g_re_init_needed) buf_puts(body, "    sp_tu_init();\n");
     if (g_uses_threads) buf_puts(body, "    sp_sched_init();\n");
     if (g_uses_program_name) buf_puts(body, "    sp_program_name = sp_str_empty;\n");
@@ -12447,6 +12451,12 @@ char *codegen_program(const NodeTable *nt) {
   buf_puts(body, "void _sp_main_body(void){\n");
   buf_puts(body, "    SP_GC_SAVE();\n");
   main_frame_ins = body->len;
+  /* SP_MULTI_CTX: the default build installs this TU's GC-mark / JSON-poly
+     hooks via process constructors, which cannot write the per-instance ctx
+     fields (no current instance exists then). Install them here instead, once
+     the host has made this instance current, before sp_tu_init layers on the
+     symbol/regex/user-globals overrides. Stripped in the default build. */
+  buf_puts(body, SP_TU_CTX_INIT_CALL);
   if (g_re_init_needed) buf_puts(body, "    sp_tu_init();\n");
   /* Adopt the main thread and chain the scheduler's GC root hook. Placed after
      sp_tu_init so it chains whatever globals hook that installed. */

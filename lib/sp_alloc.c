@@ -1082,13 +1082,27 @@ static void sp_str_sweep_gated(void) {
 char *sp_str_alloc_ext(size_t len) { return sp_str_alloc(len); }
 
 /* Wire string sweep into the object collector. Runs before main, so the hook is
-   set before the first allocation can trigger a collection. */
+   set before the first allocation can trigger a collection.
+   SP_MULTI_CTX: the hook is a per-instance ctx field, and no current instance
+   exists at process-constructor time (SP_CTX()==NULL). sp_instance_create sets
+   c->gc_str_sweep_hook instead. */
+#ifndef SP_MULTI_CTX
 __attribute__((constructor)) static void sp_alloc_install_hooks(void) {
   sp_gc_str_sweep_hook = sp_str_sweep_gated;
   sp_gc_str_major_due_hook = sp_str_major_due;
   sp_gc_obj_retune_hook = sp_gc_retune_object;
   sp_alloc_floors_from_env();
 }
+#else
+/* SP_MULTI_CTX: the same installation, run by sp_instance_create with the new
+   instance made current, so the hooks and the floors land in that instance. */
+void sp_alloc_instance_init(void) {
+  sp_gc_str_sweep_hook = sp_str_sweep_gated;
+  sp_gc_str_major_due_hook = sp_str_major_due;
+  sp_gc_obj_retune_hook = sp_gc_retune_object;
+  sp_alloc_floors_from_env();
+}
+#endif
 
 /* Float#to_s / #inspect (declared in sp_alloc.h): shortest round-trip decimal.
    sp_float_shortest gives the shortest significant digits + decimal exponent
