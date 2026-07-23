@@ -8,6 +8,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Defined in sp_alloc.c (also declared in sp_alloc.h). Wired into the object
+ * collector per instance below, replacing the default build's constructor. */
+void sp_str_sweep(void);
+
 /* Reference current-instance accessor: a thread-local pointer. One instance
  * runs per OS thread (programs are internally single-threaded). The ESP-IDF
  * port (Phase 5) swaps this for a FreeRTOS task-local storage pointer. */
@@ -67,6 +71,14 @@ sp_ctx *sp_instance_create(const sp_instance_config *cfg) {
   if (!c->gc_roots) { de(cfg->mem_ud, c); return NULL; }
   c->gc_roots_cap = rn;
   c->gc_nroots = 0;
+
+  /* Wire the string sweep into this instance's collector (the default build
+   * does this in a process constructor; under SP_MULTI_CTX it is per-ctx). */
+  c->gc_str_sweep_hook = sp_str_sweep;
+
+  /* GC verify: read the env here rather than in the process constructor, which
+   * has no current instance to write into. */
+  { const char *v = getenv("SPINEL_GC_VERIFY"); c->gc_verify = (v && *v && *v != '0'); }
   return c;
 }
 

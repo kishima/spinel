@@ -5609,6 +5609,12 @@ char *codegen_program(const NodeTable *nt) {
   else
     buf_puts(body, "int main(int argc,char**argv){\n");
   buf_puts(body, "    SP_GC_SAVE();\n");
+  /* SP_MULTI_CTX: the default build installs this TU's GC-mark / JSON-poly
+     hooks via process constructors, which cannot write the per-instance ctx
+     fields (no current instance exists then). Install them here instead, once
+     the host has made this instance current, before sp_re_init layers on the
+     symbol/regex/user-globals overrides. Stripped in the default build. */
+  buf_puts(body, "#ifdef SP_MULTI_CTX\n    sp_tu_ctx_init();\n#endif\n");
   if (g_re_init_needed) buf_puts(body, "    sp_re_init();\n");
   /* Adopt the main thread and chain the scheduler's GC root hook. Placed after
      sp_re_init so it chains whatever globals hook that installed. */

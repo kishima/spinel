@@ -156,10 +156,15 @@ void sp_str_sweep(void) {
 }
 
 /* Wire string sweep into the object collector. Runs before main, so the hook is
-   set before the first allocation can trigger a collection. */
+   set before the first allocation can trigger a collection.
+   SP_MULTI_CTX: the hook is a per-instance ctx field, and no current instance
+   exists at process-constructor time (SP_CTX()==NULL). sp_instance_create sets
+   c->gc_str_sweep_hook instead. */
+#ifndef SP_MULTI_CTX
 __attribute__((constructor)) static void sp_alloc_install_hooks(void) {
   sp_gc_str_sweep_hook = sp_str_sweep;
 }
+#endif
 
 /* Float#to_s / #inspect (declared in sp_alloc.h): shortest round-trip decimal.
    Moved out-of-line from the header -- cold (display only) and large. */

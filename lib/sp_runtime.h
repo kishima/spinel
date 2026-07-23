@@ -1539,9 +1539,10 @@ static void sp_re_mark_globals(void) {
 /* Hand the collector (lib/sp_gc.c) this TU's root-marking and string-heap
    sweep. Runs before main, so the hooks are set before the first
    allocation can trigger a collection. */
-__attribute__((constructor)) static void sp_gc_install_tu_hooks(void) {
+SP_TU_CTOR static void sp_gc_install_tu_hooks(void) {
   sp_gc_mark_globals_hook = sp_re_mark_globals;
-  /* sp_gc_str_sweep_hook is installed by sp_alloc.c's constructor. */
+  /* sp_gc_str_sweep_hook is installed by sp_alloc.c's constructor (default) or
+     by sp_instance_create (SP_MULTI_CTX). */
 }
 
 /* `$+` / `$LAST_PAREN_MATCH` — contents of the highest-indexed group
@@ -5504,7 +5505,7 @@ static sp_RbVal sp_json_symbolize(sp_RbVal v) {
   }
   return v;
 }
-__attribute__((constructor)) static void sp_json_install_hooks(void) {
+SP_TU_CTOR static void sp_json_install_hooks(void) {
   sp_json_kind_fn = sp_json_kind;
   sp_json_len_fn = sp_poly_length;
   sp_json_aref_fn = sp_poly_arr_get;
@@ -5521,6 +5522,17 @@ __attribute__((constructor)) static void sp_json_install_hooks(void) {
   sp_json_mk_hash_fn = sp_json_new_strhash;
   sp_json_hash_set_fn = sp_json_strhash_set;
 }
+
+#ifdef SP_MULTI_CTX
+/* Install this TU's per-instance hooks into the current sp_ctx. The program
+   entry calls this (see codegen) once the host has made an instance current,
+   replacing the default build's process constructors. sp_re_init(), emitted
+   after this call, then layers the symbol/regex/user-globals overrides on top. */
+static void sp_tu_ctx_init(void) {
+  sp_gc_install_tu_hooks();
+  sp_json_install_hooks();
+}
+#endif
 
 #include <setjmp.h>
 #define SP_EXC_STACK_MAX 64

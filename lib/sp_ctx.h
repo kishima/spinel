@@ -144,6 +144,13 @@ typedef struct {
 sp_ctx *sp_instance_create(const sp_instance_config *cfg);
 void    sp_instance_destroy(sp_ctx *ctx);
 
+/* A generated TU installs its per-program hooks (GC globals-mark, JSON/poly
+ * vtable) via constructors in the default build. Those write per-instance ctx
+ * fields, which do not exist at process-constructor time (SP_CTX()==NULL), so
+ * under SP_MULTI_CTX the installers are plain functions and the program entry
+ * calls sp_tu_ctx_init() once the host has made an instance current. */
+#define SP_TU_CTOR /* not a constructor; called explicitly from the entry */
+
 /* --- name-compatibility macros: original global -> ctx field --- */
 #define sp_str_heap            (SP_CTX()->str_heap)
 #define sp_str_heap_bytes      (SP_CTX()->str_heap_bytes)
@@ -215,6 +222,9 @@ void  sp_mem_free(void *p);
 #else  /* !SP_MULTI_CTX -- default: inert, globals stay as-is */
 
 #define SP_GC_ROOTS_CAP SP_GC_STACK_MAX
+
+/* Default build: TU hook installers run before main as process constructors. */
+#define SP_TU_CTOR __attribute__((constructor))
 
 /* Direct libc; folds to the original call, zero cost. */
 #include <stdlib.h>

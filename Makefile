@@ -517,6 +517,14 @@ test:
 test-lib-mode: $(SPINEL) $(SP_RT_LIB)
 	@SPINEL=$(SPINEL) ./test/lib_mode/smoke.sh
 
+# Multi-instance runtime smoke test (-DSP_MULTI_CTX). Builds the on-demand MC
+# archive, then runs a single-instance and an N-thread concurrent program plus
+# an ASan pass (see test/multi_ctx/smoke.sh). Standalone like test-lib-mode: a
+# --no-main MC unit is not part of the .rb/.expected oracle harness.
+.PHONY: test-multi-ctx
+test-multi-ctx: $(SPINEL) $(SP_RT_MC_LIB)
+	@SPINEL=$(SPINEL) ./test/multi_ctx/smoke.sh
+
 # The actual run. rbs-test golden-checks the RBS extractor (cheap, C-only).
 # rbs-seed-test checks the seeds actually reach the analyzer (incl. nested
 # classes, #1417).
