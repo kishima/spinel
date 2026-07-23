@@ -1,5 +1,12 @@
 #include "codegen_internal.h"
 
+/* Library mode (`--no-main` / `--entry`): when g_no_main is set, codegen emits
+   `int <g_entry_name>(void)` (non-static) instead of `int main(argc,argv)`, so
+   the program can be linked into a host as a callable entry point. See
+   codegen.h and the main-emission block below. */
+int g_no_main = 0;
+const char *g_entry_name = "spinel_program_main";
+
 /* A reference-backed builtin (IO/Fiber/Thread/Queue/Mutex/ConditionVariable/
    Enumerator/Exception/Proc/Method) is a genuinely nilable C pointer: an unset
    ivar, a `return nil` method, or a cache miss yields NULL. It must box via
@@ -12403,6 +12410,19 @@ char *codegen_program(const NodeTable *nt) {
     if (g_uses_threads) buf_puts(body, "    sp_sched_init();\n");
     if (g_uses_program_name) buf_puts(body, "    sp_program_name = sp_str_empty;\n");
   }
+  else if (g_no_main) {
+    /* Library mode (--no-main / --entry): the toplevel body becomes the
+       host-callable `int <entry>(void)`. Like the ext init it runs on the
+       caller's stack (an embedded task has no loader stack to swap away
+       from), there is no argc/argv, and END blocks run inline before it
+       returns (see the tail below). */
+    buf_printf(body, "int %s(void){\n", g_entry_name);
+    buf_puts(body, "    SP_GC_SAVE();\n");
+    main_frame_ins = body->len;
+    if (g_re_init_needed) buf_puts(body, "    sp_tu_init();\n");
+    if (g_uses_threads) buf_puts(body, "    sp_sched_init();\n");
+    if (g_uses_program_name) buf_puts(body, "    sp_program_name = sp_str_empty;\n");
+  }
   else {
   /* The body runs on a stack this compiler chose, not the one the loader
      gave the process (sp_main_stack_run). It is emitted as its own function
@@ -12454,9 +12474,12 @@ char *codegen_program(const NodeTable *nt) {
   /* No PRNG seeding here: the shared Kernel stream (lib/sp_random.c)
      self-seeds lazily on its first draw, so a program that consumes no
      randomness pays nothing and one that does still varies per run. */
-  /* Register END blocks (atexit runs LIFO, so they execute in reverse registration order) */
-  for (int e = 1; e <= end_count; e++)
-    buf_printf(body, "    atexit(sp_end_fn_%d);\n", e);
+  /* Register END blocks (atexit runs LIFO, so they execute in reverse registration order).
+     Library mode has no process exit to hook, so END blocks run inline right
+     before the entry returns (see below), also in reverse registration order. */
+  if (!g_no_main)
+    for (int e = 1; e <= end_count; e++)
+      buf_printf(body, "    atexit(sp_end_fn_%d);\n", e);
   emit_scope_decls(c, &c->scopes[0], body);
   buf_puts(body, "\n");
   /* Hoist BEGIN blocks to run first */
@@ -12519,6 +12542,15 @@ char *codegen_program(const NodeTable *nt) {
      ext-init form is a void function, so there it just runs them. */
   if (g_needs_at_exit && g_ext_init_name) buf_puts(body, "  sp_at_exit_run(0);\n");
   if (g_ext_init_name) buf_puts(body, "}\n");
+  else if (g_no_main) {
+    /* Library mode: at_exit hooks, then the END blocks inline (reverse
+       registration order, matching atexit's LIFO) -- there is no process
+       exit to hook. The entry's status is the hooks' to change, as main's. */
+    if (g_needs_at_exit) buf_puts(body, "  int _sp_lib_rc = sp_at_exit_run(0);\n");
+    for (int e = end_count; e >= 1; e--)
+      buf_printf(body, "    sp_end_fn_%d();\n", e);
+    buf_puts(body, g_needs_at_exit ? "  return _sp_lib_rc;\n}\n" : "  return 0;\n}\n");
+  }
   else {
     if (g_needs_at_exit) buf_puts(body, "  _sp_main_rc = sp_at_exit_run(0);\n}\n");
     else buf_puts(body, "  _sp_main_rc = 0;\n}\n");
