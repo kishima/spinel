@@ -13,7 +13,9 @@
 #ifndef SPL
 #define SPL(s) (&("\xff" s)[1])
 #endif
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 const char *sp_sprintf(const char *fmt, ...);  /* defined in the generated TU */
+#endif
 
 /* match-register state (declared extern in sp_re.h). */
 #ifndef SP_MULTI_CTX  /* sp_ctx-field macros under SP_MULTI_CTX */

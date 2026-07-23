@@ -30,6 +30,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <setjmp.h>      /* jmp_buf (fn_exc_arm below) */
 #include "sp_types.h"    /* mrb_int, sp_sym */
 #include "sp_random.h"   /* sp_Random (by value below); pulls only sp_types.h */
 
@@ -118,6 +119,31 @@ typedef struct sp_ctx {
   sp_RbVal        proc_poly_args[16];    /* was _sp_proc_poly_args */
   const char     *trap_state[SP_SIG_MAX];/* was sp_trap_state */
   struct sp_Proc *trap_proc[SP_SIG_MAX]; /* was sp_trap_proc */
+
+  /* --- TU functions the runtime calls, routed per-instance (T4-0). The TU
+   *     keeps its own static definitions (sp_runtime.h) and registers them via
+   *     sp_tu_ctx_init; the runtime .c files reach them through the name macros
+   *     below. Same scheme as the introspection vtable above. --- */
+  const char *(*fn_sprintf)(const char *, ...);
+  sp_RbVal    (*fn_box_proc)(void *);
+  void        (*fn_bigint_raise_zerodiv)(const char *);
+  mrb_int     (*fn_proc_call)(struct sp_Proc *, mrb_int, mrb_int *);
+  void       *(*fn_exc_ctx_new)(void);
+  void        (*fn_exc_ctx_free)(void *);
+  void        (*fn_exc_ctx_save)(void *);
+  void        (*fn_exc_ctx_load)(void *);
+  void        (*fn_exc_ctx_mark)(void *);
+  void        (*fn_exc_arm)(jmp_buf);
+  void        (*fn_exc_disarm)(void);
+  const char *(*fn_exc_cur_cls)(void);
+  const char *(*fn_exc_cur_msg)(void);
+  void       *(*fn_exc_cur_obj)(void);
+  void        (*fn_exc_stage_recv)(sp_RbVal);
+  void        (*fn_fiber_reraise)(const char *, const char *, void *);
+  SP_NORETURN void (*fn_raise_cls)(const char *, const char *);
+  SP_NORETURN void (*fn_raise_stop_iteration)(sp_RbVal);
+  int         (*fn_signal_resolve)(sp_RbVal);
+  const char *(*fn_signal_signame)(mrb_int);
 
   /* --- allocation backend (T3-2 sp_mem_* hooks) --- */
   void  *mem_ud;
@@ -231,6 +257,34 @@ void    sp_instance_destroy(sp_ctx *ctx);
 #define sp_trap_state        (SP_CTX()->trap_state)
 #define sp_trap_proc         (SP_CTX()->trap_proc)
 
+/* TU functions routed per-instance (T4-0). The runtime .c files call these
+ * names; the macros send them to the current instance's registered pointer.
+ * sp_runtime.h #undefs these (its own definitions/calls use the direct names)
+ * and registers the definitions in sp_tu_ctx_init. */
+#define sp_sprintf               (SP_CTX()->fn_sprintf)
+#define sp_box_proc              (SP_CTX()->fn_box_proc)
+#define sp_bigint_raise_zerodiv  (SP_CTX()->fn_bigint_raise_zerodiv)
+#define sp_proc_call             (SP_CTX()->fn_proc_call)
+#define sp_exc_ctx_new           (SP_CTX()->fn_exc_ctx_new)
+#define sp_exc_ctx_free          (SP_CTX()->fn_exc_ctx_free)
+#define sp_exc_ctx_save          (SP_CTX()->fn_exc_ctx_save)
+#define sp_exc_ctx_load          (SP_CTX()->fn_exc_ctx_load)
+#define sp_exc_ctx_mark          (SP_CTX()->fn_exc_ctx_mark)
+#define sp_exc_arm               (SP_CTX()->fn_exc_arm)
+#define sp_exc_disarm            (SP_CTX()->fn_exc_disarm)
+#define sp_exc_cur_cls           (SP_CTX()->fn_exc_cur_cls)
+#define sp_exc_cur_msg           (SP_CTX()->fn_exc_cur_msg)
+#define sp_exc_cur_obj           (SP_CTX()->fn_exc_cur_obj)
+#define sp_exc_stage_recv        (SP_CTX()->fn_exc_stage_recv)
+#define sp_fiber_reraise         (SP_CTX()->fn_fiber_reraise)
+#define sp_raise_cls             (SP_CTX()->fn_raise_cls)
+#define sp_raise_stop_iteration  (SP_CTX()->fn_raise_stop_iteration)
+#define sp_signal_resolve        (SP_CTX()->fn_signal_resolve)
+#define sp_signal_signame        (SP_CTX()->fn_signal_signame)
+
+/* TU keeps private definitions of the routed functions (per-instance copies). */
+#define SP_TU_STATIC static
+
 /* The libc allocation names are remapped to per-instance wrappers by
  * sp_mem_override.h, force-included into every mc TU (see that header and
  * sp_ctx.c). Nothing to declare here. */
@@ -241,6 +295,10 @@ void    sp_instance_destroy(sp_ctx *ctx);
 
 /* Default build: TU hook installers run before main as process constructors. */
 #define SP_TU_CTOR __attribute__((constructor))
+
+/* Default build: routed TU functions keep external linkage (single program per
+ * binary, resolved directly). */
+#define SP_TU_STATIC
 
 #endif /* SP_MULTI_CTX */
 

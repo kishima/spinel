@@ -73,6 +73,14 @@ RB
 if cc -c -O2 -w -DSP_MULTI_CTX -include "$OVERRIDE" -I"$LIB" -I"$LIB/regexp" \
       "$TMP/rich.c" -o "$TMP/rich.o" 2>"$TMP/cc.err"; then
   check_obj "$TMP/rich.o" no "generated:rich.o"
+  # T4-0: a generated TU must export ONLY its entry. Any other global definition
+  # would collide when a second program is linked into the same binary (kernel +
+  # desktop). The runtime-referenced ones are per-ctx pointers / .a globals now;
+  # this guards against a new leak (e.g. a codegen change emitting a global).
+  extra="$(nm -g --defined-only "$TMP/rich.o" 2>/dev/null | awk '$2 ~ /[TDBRtdbr]/ {print $3}' | grep -v '^sp_prog_entry$' | tr '\n' ' ')"
+  if [ -n "$extra" ]; then
+    echo "FAIL: generated TU exports globals besides its entry: $extra"; fail=1
+  fi
 else
   echo "FAIL: generated program did not compile with the override"; tail -5 "$TMP/cc.err"; fail=1
 fi

@@ -529,6 +529,7 @@ test-lib-mode: $(SPINEL) $(SP_RT_LIB)
 .PHONY: test-multi-ctx
 test-multi-ctx: check-mc-syms
 	@SPINEL=$(SPINEL) ./test/multi_ctx/smoke.sh
+	@SPINEL=$(SPINEL) ./test/multi_ctx/link2.sh
 	@SPINEL=$(SPINEL) ./test/multi_ctx/estalloc.sh
 
 # nm gate: verify the allocation override reached every mc TU (only sp_ctx.o may

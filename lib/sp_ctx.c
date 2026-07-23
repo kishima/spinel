@@ -74,6 +74,34 @@ char *sp_mem_strdup(const char *s) {
   return d;
 }
 
+/* --- T4-0: real .a definitions of the routed functions that macro-less runtime
+ *     TUs reference. The regexp engine and the bigint shim cannot include
+ *     sp_ctx.h (their own mrb_bool / shim types conflict), so they cannot use
+ *     the per-ctx name macros; they link these globals instead. The two raise
+ *     functions forward to the current instance's registered copy; sp_sprintf is
+ *     program-independent (vsnprintf + the ctx-routed string heap), so a single
+ *     shared definition is correct. --- */
+#include <stdarg.h>
+#include <stdio.h>
+#include "sp_alloc.h"   /* sp_str_alloc (static inline). Included while the
+                           routing macros are still active so sp_alloc.h's own
+                           inline helpers (e.g. sp_raise_frozen_array) resolve
+                           sp_raise_cls through the macro. */
+#undef sp_raise_cls
+#undef sp_bigint_raise_zerodiv
+#undef sp_sprintf
+SP_NORETURN void sp_raise_cls(const char *cls, const char *msg) { g_sp_ctx->fn_raise_cls(cls, msg); }
+void sp_bigint_raise_zerodiv(const char *msg) { g_sp_ctx->fn_bigint_raise_zerodiv(msg); }
+const char *sp_sprintf(const char *fmt, ...) {
+  char tmp[4096]; va_list ap; va_start(ap, fmt);
+  int n = vsnprintf(tmp, sizeof(tmp), fmt, ap); va_end(ap);
+  if (n < 0) n = 0;
+  char *b = sp_str_alloc((size_t)n);
+  if (n < (int)sizeof(tmp)) memcpy(b, tmp, (size_t)n);
+  else { va_start(ap, fmt); vsnprintf(b, (size_t)n + 1, fmt, ap); va_end(ap); }
+  return b;
+}
+
 /* --- default libc backend (used when cfg->alloc is NULL) --- */
 static void *dflt_alloc(void *ud, size_t n)            { (void)ud; return calloc(1, n); }
 static void *dflt_realloc(void *ud, void *p, size_t n) { (void)ud; return realloc(p, n); }

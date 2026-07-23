@@ -77,6 +77,56 @@ static int sp_bt_n = 0;
 /* sp_RbVal, the collector globals/entry points, and the hot inline mark
    helpers; the collector body lives in libspinel_rt.a (lib/sp_gc.c). */
 #include "sp_gc.h"
+#ifdef SP_MULTI_CTX
+/* T4-0: sp_ctx.h remaps these ~20 TU function names to per-instance pointers so
+ * the runtime .c files reach the current instance's copy. Within THIS TU we own
+ * the definitions and call them directly (they are this instance's copies, and
+ * a direct call is cheaper), so drop the macros here. sp_tu_ctx_init registers
+ * the definitions into the ctx for the runtime side. */
+#undef sp_sprintf
+#undef sp_box_proc
+#undef sp_bigint_raise_zerodiv
+#undef sp_proc_call
+#undef sp_exc_ctx_new
+#undef sp_exc_ctx_free
+#undef sp_exc_ctx_save
+#undef sp_exc_ctx_load
+#undef sp_exc_ctx_mark
+#undef sp_exc_arm
+#undef sp_exc_disarm
+#undef sp_exc_cur_cls
+#undef sp_exc_cur_msg
+#undef sp_exc_cur_obj
+#undef sp_exc_stage_recv
+#undef sp_fiber_reraise
+#undef sp_raise_cls
+#undef sp_raise_stop_iteration
+#undef sp_signal_resolve
+#undef sp_signal_signame
+/* Forward-declare the routed functions (static) so sp_tu_ctx_init, which takes
+   their addresses, sees them regardless of where in this header each is
+   defined. */
+SP_TU_STATIC const char *sp_sprintf(const char *, ...);
+SP_TU_STATIC sp_RbVal sp_box_proc(void *);
+SP_TU_STATIC void sp_bigint_raise_zerodiv(const char *);
+SP_TU_STATIC mrb_int sp_proc_call(struct sp_Proc *, mrb_int, mrb_int *);
+SP_TU_STATIC void *sp_exc_ctx_new(void);
+SP_TU_STATIC void sp_exc_ctx_free(void *);
+SP_TU_STATIC void sp_exc_ctx_save(void *);
+SP_TU_STATIC void sp_exc_ctx_load(void *);
+SP_TU_STATIC void sp_exc_ctx_mark(void *);
+SP_TU_STATIC void sp_exc_arm(jmp_buf);
+SP_TU_STATIC void sp_exc_disarm(void);
+SP_TU_STATIC const char *sp_exc_cur_cls(void);
+SP_TU_STATIC const char *sp_exc_cur_msg(void);
+SP_TU_STATIC void *sp_exc_cur_obj(void);
+SP_TU_STATIC void sp_exc_stage_recv(sp_RbVal);
+SP_TU_STATIC void sp_fiber_reraise(const char *, const char *, void *);
+SP_TU_STATIC SP_NORETURN SP_COLD void sp_raise_cls(const char *, const char *);
+SP_TU_STATIC SP_NORETURN void sp_raise_stop_iteration(sp_RbVal);
+SP_TU_STATIC int sp_signal_resolve(sp_RbVal);
+SP_TU_STATIC const char *sp_signal_signame(mrb_int);
+#endif
 /* sp_Fiber + the Fiber API; the bodies live in libspinel_rt.a (lib/sp_fiber.c). */
 #include "sp_fiber.h"
 /* sp_thread + the cooperative scheduler (Phase 0); bodies in lib/sp_sched.c. */
@@ -95,7 +145,7 @@ static const char *sp_sym_to_s(sp_sym id);
    `a / 0`, `a % 0`, `a.divmod(0)`, `a.ceildiv(0)`, and `a.pow(e, 0)` all
    raise ZeroDivisionError instead of triggering C undefined behaviour
    (SIGFPE on x86) or silently returning 0. */
-SP_NORETURN SP_COLD void sp_raise_cls(const char *cls, const char *msg);
+SP_TU_STATIC SP_NORETURN SP_COLD void sp_raise_cls(const char *cls, const char *msg);
 
 /* The unresolved-call gate (codegen_call.c) raises NoMethodError through this
    single recognizable token under SPINEL_GATE_RAISE, so coercion sites can
@@ -252,7 +302,7 @@ static inline mrb_bool sp_int_mul_overflow_p(mrb_int a, mrb_int b, mrb_int *r) {
 /* sp_gcd / sp_lcm / sp_powmod / sp_ceildiv / sp_int_clamp / sp_int_sqrt
    now live in libspinel_rt.a (lib/sp_core.c); declared via sp_core.h. */
 static inline char *sp_str_alloc_raw(size_t total_with_null);  /* fwd decl */
-const char *sp_sprintf(const char *fmt, ...);                  /* fwd decl */
+SP_TU_STATIC const char *sp_sprintf(const char *fmt, ...);                  /* fwd decl */
 /* Integer#chr: a single byte; CRuby raises RangeError outside 0..255. */
 static const char*sp_int_chr(mrb_int n){
   if(n<0||n>255)sp_raise_cls("RangeError",sp_sprintf("%lld out of char range",(long long)n));
@@ -293,8 +343,8 @@ static inline mrb_int sp_i64_to_int(int64_t v){
 
 /* Forward decls for helpers used across this header (and by the
    string->number parsers that now live in libspinel_rt.a). */
-SP_NORETURN SP_COLD void sp_raise_cls(const char *cls, const char *msg);
-const char *sp_sprintf(const char *fmt, ...);
+SP_TU_STATIC SP_NORETURN SP_COLD void sp_raise_cls(const char *cls, const char *msg);
+SP_TU_STATIC const char *sp_sprintf(const char *fmt, ...);
 
 /* String -> number parsers now live in libspinel_rt.a (lib/sp_core.c). */
 #include "sp_core.h"
@@ -983,7 +1033,7 @@ static inline mrb_int sp_int_clamp_range_ck(mrb_int v, sp_Range r) {
 static const char *sp_sym_inspect(sp_sym id) { if (id == (sp_sym)-1) return "nil"; /* nilable-symbol sentinel */ return sp_sym_inspect_name(sp_sym_to_s(id)); }
 static const char*sp_gets(void){char buf[4096];if(!fgets(buf,sizeof(buf),stdin))return NULL;size_t l=strlen(buf);char*r=sp_str_alloc_raw(l+1);memcpy(r,buf,l+1);return r;}
 static sp_StrArray*sp_readlines(void){sp_StrArray*a=sp_StrArray_new();SP_GC_ROOT(a);char buf[4096];while(fgets(buf,sizeof(buf),stdin)){size_t l=strlen(buf);char*r=sp_str_alloc_raw(l+1);memcpy(r,buf,l+1);sp_StrArray_push(a,r);}return a;}
-const char*sp_sprintf(const char*fmt,...){char _sp_tmp[4096];va_list ap;va_start(ap,fmt);int _sp_n=vsnprintf(_sp_tmp,sizeof(_sp_tmp),fmt,ap);va_end(ap);if(_sp_n<0)_sp_n=0;char*b=sp_str_alloc((size_t)_sp_n);if(_sp_n<(int)sizeof(_sp_tmp)){memcpy(b,_sp_tmp,(size_t)_sp_n);}else{/* result didn't fit the stack temp; re-render at full width (sp_str_alloc gives _sp_n bytes + NUL) so long string interpolations aren't truncated. re-arm the va_list rather than va_copy so the common fast path pays nothing */va_start(ap,fmt);vsnprintf(b,(size_t)_sp_n+1,fmt,ap);va_end(ap);}return b;}
+SP_TU_STATIC const char*sp_sprintf(const char*fmt,...){char _sp_tmp[4096];va_list ap;va_start(ap,fmt);int _sp_n=vsnprintf(_sp_tmp,sizeof(_sp_tmp),fmt,ap);va_end(ap);if(_sp_n<0)_sp_n=0;char*b=sp_str_alloc((size_t)_sp_n);if(_sp_n<(int)sizeof(_sp_tmp)){memcpy(b,_sp_tmp,(size_t)_sp_n);}else{/* result didn't fit the stack temp; re-render at full width (sp_str_alloc gives _sp_n bytes + NUL) so long string interpolations aren't truncated. re-arm the va_list rather than va_copy so the common fast path pays nothing */va_start(ap,fmt);vsnprintf(b,(size_t)_sp_n+1,fmt,ap);va_end(ap);}return b;}
 /* Use a temp pointer for realloc so the original buffer is not leaked
    on allocation failure. Match the perror+exit pattern used elsewhere
    (see sp_IntArray_replace) instead of returning a partial result. */
@@ -1893,7 +1943,7 @@ static sp_RbVal sp_box_float_array(void *p) { return sp_box_obj(p, SP_BUILTIN_FL
 static sp_RbVal sp_box_str_array(void *p)   { return sp_box_obj(p, SP_BUILTIN_STR_ARRAY); }
 static sp_RbVal sp_box_sym_array(void *p)   { return sp_box_obj(p, SP_BUILTIN_SYM_ARRAY); }
 static sp_RbVal sp_box_ptr_array(void *p)   { return sp_box_obj(p, SP_BUILTIN_PTR_ARRAY); }
-sp_RbVal sp_box_proc(void *p)        { return sp_box_obj(p, SP_BUILTIN_PROC); }
+SP_TU_STATIC sp_RbVal sp_box_proc(void *p)        { return sp_box_obj(p, SP_BUILTIN_PROC); }
 static sp_RbVal sp_box_method(void *p)      { return sp_box_obj(p, SP_BUILTIN_METHOD); }
 
 /* CRuby-compatible Array#index / #rindex / #find_index: returns
@@ -2577,9 +2627,9 @@ struct sp_Proc;
 const char *sp_trap_state[SP_SIG_MAX];
 struct sp_Proc *sp_trap_proc[SP_SIG_MAX];
 #endif
-SP_COLD void sp_exc_stage_recv(sp_RbVal v) { sp_pending_exc_recv = v; sp_pending_exc_flags |= 1; }
-SP_COLD void sp_exc_stage_key(sp_RbVal v)  { sp_pending_exc_key = v;  sp_pending_exc_flags |= 2; }
-SP_COLD void sp_exc_stage_val(sp_RbVal v)  { sp_pending_exc_val = v;  sp_pending_exc_flags |= 4; }
+SP_TU_STATIC SP_COLD void sp_exc_stage_recv(sp_RbVal v) { sp_pending_exc_recv = v; sp_pending_exc_flags |= 1; }
+SP_TU_STATIC SP_COLD void sp_exc_stage_key(sp_RbVal v)  { sp_pending_exc_key = v;  sp_pending_exc_flags |= 2; }
+SP_TU_STATIC SP_COLD void sp_exc_stage_val(sp_RbVal v)  { sp_pending_exc_val = v;  sp_pending_exc_flags |= 4; }
 /* Numeric queries / rounding on a poly value: dispatch on the runtime tag the
    way CRuby dispatches on the class. A tag whose class does not define the
    method raises CRuby's NoMethodError (e.g. `1.nan?`, `"x".abs`). */
@@ -5535,6 +5585,29 @@ SP_TU_CTOR static void sp_json_install_hooks(void) {
 static void sp_tu_ctx_init(void) {
   sp_gc_install_tu_hooks();
   sp_json_install_hooks();
+  /* T4-0: register this TU's copies of the runtime-called functions into the
+     ctx (names are direct here -- see the #undef block after sp_gc.h). */
+  sp_ctx *_c = sp_ctx_current();
+  _c->fn_sprintf              = sp_sprintf;
+  _c->fn_box_proc             = sp_box_proc;
+  _c->fn_bigint_raise_zerodiv = sp_bigint_raise_zerodiv;
+  _c->fn_proc_call            = sp_proc_call;
+  _c->fn_exc_ctx_new          = sp_exc_ctx_new;
+  _c->fn_exc_ctx_free         = sp_exc_ctx_free;
+  _c->fn_exc_ctx_save         = sp_exc_ctx_save;
+  _c->fn_exc_ctx_load         = sp_exc_ctx_load;
+  _c->fn_exc_ctx_mark         = sp_exc_ctx_mark;
+  _c->fn_exc_arm              = sp_exc_arm;
+  _c->fn_exc_disarm           = sp_exc_disarm;
+  _c->fn_exc_cur_cls          = sp_exc_cur_cls;
+  _c->fn_exc_cur_msg          = sp_exc_cur_msg;
+  _c->fn_exc_cur_obj          = sp_exc_cur_obj;
+  _c->fn_exc_stage_recv       = sp_exc_stage_recv;
+  _c->fn_fiber_reraise        = sp_fiber_reraise;
+  _c->fn_raise_cls            = sp_raise_cls;
+  _c->fn_raise_stop_iteration = sp_raise_stop_iteration;
+  _c->fn_signal_resolve       = sp_signal_resolve;
+  _c->fn_signal_signame       = sp_signal_signame;
 }
 #endif
 
@@ -5659,7 +5732,7 @@ static struct sp_Exception_s *sp_exc_new_for_catch(const char *cls, const char *
 static void *sp_exc_recover_named(const char *cls, const char *msg);
 static void *sp_exc_apply_staged(const char *cls, const char *msg, void *obj);
 static int sp_exc_exit_status(void *obj);
-SP_NORETURN SP_COLD void sp_raise_cls(const char *cls, const char *msg) {
+SP_TU_STATIC SP_NORETURN SP_COLD void sp_raise_cls(const char *cls, const char *msg) {
 #if SP_BT_AVAILABLE
   if (sp_bt_enabled) sp_bt_n = backtrace(sp_bt_buf, 256);
 #endif
@@ -5899,7 +5972,7 @@ SP_NORETURN SP_COLD static void sp_raise_poly(sp_RbVal v) {
 /* Raise StopIteration carrying the iteration's return value as #result. Built as
    a carried object so a `rescue StopIteration => e` binding reads e.result; a
    generator supplies the value, a plain past-the-end #next raises with nil. */
-SP_NORETURN void sp_raise_stop_iteration(sp_RbVal result) {
+SP_TU_STATIC SP_NORETURN void sp_raise_stop_iteration(sp_RbVal result) {
   /* Marker-prefixed message: sp_mark_string reads msg[-1] as the GC marker, so a
      bare rodata literal would be an out-of-bounds read at a section edge. */
   const char *msg = (&("\xff" "iteration reached an end")[1]);
@@ -6155,7 +6228,7 @@ static int sp_exc_is_standard_error(const char *raised) {
    unit; can't see static helpers in this header). Defined non-static
    so sp_bigint.c's mrb_raise macro can dispatch into spinel's
    longjmp-based rescue net rather than fprintf+exit. */
-void sp_bigint_raise_zerodiv(const char *msg) { sp_raise_cls("ZeroDivisionError", msg); }
+SP_TU_STATIC void sp_bigint_raise_zerodiv(const char *msg) { sp_raise_cls("ZeroDivisionError", msg); }
 /* sp_exc_is_a: see earlier definition (takes volatile sp_Exception *) */
 
 /* A non-local control-flow unwind -- a proc `return` or a `throw` -- runs the
@@ -6422,15 +6495,15 @@ typedef struct {
   void *pcause;                      /* sp_pending_cause */
 } sp_exc_ctx_t;
 
-void *sp_exc_ctx_new(void) { return calloc(1, sizeof(sp_exc_ctx_t)); }
-void sp_exc_ctx_free(void *p) {
+SP_TU_STATIC void *sp_exc_ctx_new(void) { return calloc(1, sizeof(sp_exc_ctx_t)); }
+SP_TU_STATIC void sp_exc_ctx_free(void *p) {
   sp_exc_ctx_t *x = (sp_exc_ctx_t *)p;
   if (!x) return;
   free(x->es); free(x->em); free(x->ec); free(x->eo);
   free(x->cs); free(x->ct); free(x->ctk); free(x->cv); free(x->cet);
   free(x->bs); free(x->bv); free(x->bser); free(x->bet); free(x->shand); free(x);
 }
-void sp_exc_ctx_save(void *p) {            /* current globals -> ctx */
+SP_TU_STATIC void sp_exc_ctx_save(void *p) {            /* current globals -> ctx */
   sp_exc_ctx_t *x = (sp_exc_ctx_t *)p;
   int n = sp_exc_top;
   if (n > x->ecap) { x->ecap = n;
@@ -6471,7 +6544,7 @@ void sp_exc_ctx_save(void *p) {            /* current globals -> ctx */
   for (int i = 0; i < rn; i++) x->shand[i] = sp_exc_handling[i];
   x->rn = rn; x->pcause = sp_pending_cause;
 }
-void sp_exc_ctx_load(void *p) {            /* ctx -> current globals */
+SP_TU_STATIC void sp_exc_ctx_load(void *p) {            /* ctx -> current globals */
   sp_exc_ctx_t *x = (sp_exc_ctx_t *)p;
   for (int i = 0; i < x->en; i++) { memcpy(sp_exc_stack[i], x->es[i], sizeof(jmp_buf));
     sp_exc_msg[i] = x->em[i]; sp_exc_cls[i] = x->ec[i]; sp_exc_obj[i] = x->eo[i]; }
@@ -6491,7 +6564,7 @@ void sp_exc_ctx_load(void *p) {            /* ctx -> current globals */
   for (int i = 0; i < x->rn; i++) sp_exc_handling[i] = x->shand[i];
   sp_rescue_sp = x->rn; sp_pending_cause = x->pcause;
 }
-void sp_exc_ctx_mark(void *p) {            /* GC: mark a suspended fiber's carried exc objects */
+SP_TU_STATIC void sp_exc_ctx_mark(void *p) {            /* GC: mark a suspended fiber's carried exc objects */
   sp_exc_ctx_t *x = (sp_exc_ctx_t *)p;
   if (!x) return;
   for (int i = 0; i < x->en; i++) if (x->eo[i]) sp_gc_mark(x->eo[i]);
@@ -6505,14 +6578,14 @@ void sp_exc_ctx_mark(void *p) {            /* GC: mark a suspended fiber's carri
    setjmp buffer as the fiber's lowest handler, so an otherwise-unhandled raise
    in the fiber body unwinds back to the trampoline (on the fiber's own stack)
    instead of exiting or long-jumping across to the resumer. */
-void sp_exc_arm(jmp_buf b)     { memcpy(sp_exc_stack[sp_exc_top], b, sizeof(jmp_buf)); sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++; }
-void sp_exc_disarm(void)       { if (sp_exc_top > 0) sp_exc_top--; }
-const char *sp_exc_cur_cls(void) { return sp_exc_top > 0 ? sp_exc_cls[sp_exc_top-1] : sp_str_empty; }
-const char *sp_exc_cur_msg(void) { return sp_exc_top > 0 ? sp_exc_msg[sp_exc_top-1] : sp_str_empty; }
-void *sp_exc_cur_obj(void)       { return sp_exc_top > 0 ? sp_exc_obj[sp_exc_top-1] : NULL; }
+SP_TU_STATIC void sp_exc_arm(jmp_buf b)     { memcpy(sp_exc_stack[sp_exc_top], b, sizeof(jmp_buf)); sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++; }
+SP_TU_STATIC void sp_exc_disarm(void)       { if (sp_exc_top > 0) sp_exc_top--; }
+SP_TU_STATIC const char *sp_exc_cur_cls(void) { return sp_exc_top > 0 ? sp_exc_cls[sp_exc_top-1] : sp_str_empty; }
+SP_TU_STATIC const char *sp_exc_cur_msg(void) { return sp_exc_top > 0 ? sp_exc_msg[sp_exc_top-1] : sp_str_empty; }
+SP_TU_STATIC void *sp_exc_cur_obj(void)       { return sp_exc_top > 0 ? sp_exc_obj[sp_exc_top-1] : NULL; }
 /* Re-raise a fiber's unhandled exception in the resumer's context (the fiber
    trampoline caught it on the fiber's stack, then returned cooperatively). */
-void sp_fiber_reraise(const char *cls, const char *msg, void *obj) {
+SP_TU_STATIC void sp_fiber_reraise(const char *cls, const char *msg, void *obj) {
   if (obj) sp_pending_exc_obj = obj;
   sp_raise_cls(cls, msg);
 }
@@ -7161,7 +7234,7 @@ SP_TLS sp_RbVal _sp_proc_poly_args[16];
 static SP_TLS sp_Proc *_sp_proc_blk;
 static mrb_int sp_proc_arity(sp_Proc *p) { return p ? p->arity : 0; }
 static mrb_bool sp_proc_lambda_p(sp_Proc *p) { return p ? p->lambda_p : FALSE; }
-mrb_int sp_proc_call(sp_Proc *p, mrb_int argc, mrb_int *args) { if (!p || !p->fn) return 0; if (!args) { mrb_int noargs[16] = {0}; return ((mrb_int (*)(void *, mrb_int, mrb_int *))p->fn)(p->cap, 0, noargs); } return ((mrb_int (*)(void *, mrb_int, mrb_int *))p->fn)(p->cap, argc, args); }
+SP_TU_STATIC mrb_int sp_proc_call(sp_Proc *p, mrb_int argc, mrb_int *args) { if (!p || !p->fn) return 0; if (!args) { mrb_int noargs[16] = {0}; return ((mrb_int (*)(void *, mrb_int, mrb_int *))p->fn)(p->cap, 0, noargs); } return ((mrb_int (*)(void *, mrb_int, mrb_int *))p->fn)(p->cap, argc, args); }
 /* <proc>.call(*arr): spread a runtime array into the mrb_int[16] / boxed
    side-channel ABI. Each element rides the side-channel (a poly parameter reads
    it there) and its unboxed projection fills the mrb_int slot (a concrete-typed
@@ -7204,14 +7277,14 @@ static sp_StrIntHash *sp_signal_list(void) {
     sp_StrIntHash_set(h, sp_sig_table[i].name, (mrb_int)sp_sig_table[i].no);
   return h;
 }
-const char *sp_signal_signame(mrb_int no) {
+SP_TU_STATIC const char *sp_signal_signame(mrb_int no) {
   for (int i = 0; sp_sig_table[i].name; i++)
     if (sp_sig_table[i].no == (int)no) return sp_sig_table[i].name;
   return NULL;   /* nil for an unknown number, as in CRuby 3.4+ */
 }
 /* Resolve a signal designator (String/Symbol name with optional SIG prefix,
    or Integer) to its number; CRuby's errors for the invalid forms. */
-SP_COLD int sp_signal_resolve(sp_RbVal sig) {
+SP_TU_STATIC SP_COLD int sp_signal_resolve(sp_RbVal sig) {
   const char *nm = NULL;
   if (sig.tag == SP_TAG_STR) nm = sig.v.s;
   else if (sig.tag == SP_TAG_SYM) nm = sp_sym_to_s((sp_sym)sig.v.i);
