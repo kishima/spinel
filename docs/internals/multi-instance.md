@@ -141,28 +141,60 @@ must be removed before the macro is in scope; build the whole tree with
 ### Full allocation hooking (mandatory for the ESP32 target)
 
 The fmruby ESP32 target forbids bare `malloc` and requires each task's
-`fmrb_mem` pool. So *every* `malloc/calloc/realloc/free` in `lib/` — not just
-the GC/string heaps but temporary buffers in `sp_str.c` (format, UTF-8, sub/
-gsub), regexp, etc. — routes through thin wrappers:
+`fmrb_mem` pool. So *every* `malloc/calloc/realloc/free/strdup` in the runtime —
+not just the GC/string heaps but the temporary buffers in `sp_str.c` (format,
+UTF-8, sub/gsub), regexp, etc., ~490 sites in all — must route through the
+instance backend, **and so must the generated program TU** (its `sp_runtime.h`
+inline allocations).
+
+Rather than rewrite ~490 call sites (error-prone, and a standing conflict
+against upstream merges), the libc names are remapped with function-like macros
+in `lib/sp_mem_override.h`, force-injected into every mc TU via
+`-include lib/sp_mem_override.h` (the Makefile `MC_DEF`). This is the same
+"errno-style" indirection the runtime globals use — codegen and the sources are
+untouched, and the header is **never** included in the default build, so that
+build stays byte-identical.
 
 ```c
-void *sp_mem_alloc (size_t);   /* default: malloc     ; MC: SP_CTX()->alloc      */
-void *sp_mem_zalloc(size_t);   /* default: calloc     ; MC: SP_CTX()->alloc(zeroed)*/
-void *sp_mem_realloc(void*, size_t);
-void  sp_mem_free(void*);
+/* lib/sp_mem_override.h (mc build only) */
+#include <stdlib.h>            /* real declarations first */
+#include <string.h>
+void *sp_mem_malloc(size_t);
+void *sp_mem_calloc(size_t, size_t);
+void *sp_mem_realloc(void *, size_t);
+void  sp_mem_free(void *);
+char *sp_mem_strdup(const char *);
+#define malloc(n)    sp_mem_malloc(n)
+#define calloc(a,b)  sp_mem_calloc((a),(b))
+#define realloc(p,n) sp_mem_realloc((p),(n))
+#define free(p)      sp_mem_free(p)
+#define strdup(s)    sp_mem_strdup(s)
 ```
 
-- Default mode expands to the libc call directly (zero cost).
-- `alloc` **must zero-fill** (GC relies on calloc semantics).
+- The wrappers are **defined once**, in `sp_ctx.c`, which `#undef`s the macros at
+  the top so its bodies reach real libc. No other TU may `#undef` them.
+- They route through the current instance's backend when one is set, else fall
+  back to libc (only a stray pre-entry allocation could hit that, and it must not
+  be freed across the boundary). The backend **must zero-fill**
+  (`sp_instance_config` contract), so `malloc` and `calloc` collapse onto one
+  hook; the modest zero-fill cost is tracked by `make bench`.
 - Hooks carry `mem_ud` (fmruby passes the task's `ESTALLOC*` TLSF handle;
-  `alloc=est_calloc`, `realloc=est_realloc`, `dealloc=est_free`). Same
-  allocator and stats path (`mrb_get_estalloc_stats`) as the mruby VM, so
-  switching engines does not change the memory layout.
-- `malloc_trim` (glibc-only) becomes a no-op in hook mode (as the Darwin branch
-  already is).
-- CI check: `nm libspinel_rt_mc.a` must show **no** undefined
-  `malloc/calloc/realloc/free` references (a `make` target guards regressions).
-  Non-allocating libc (`getenv`, …) is exempt.
+  `alloc=est_calloc`, `realloc=est_realloc`, `dealloc=est_free`). Same allocator
+  and stats path as the mruby VM, so switching engines does not change the
+  memory layout.
+- `malloc_trim` (glibc-only) is a no-op under `SP_MULTI_CTX` (and `<malloc.h>` is
+  not pulled in, since it would be re-processed after the remap).
+- **Boundary — NOT hooked:** stdio internal buffers (`fopen`/`printf`/`getline`
+  …) allocate inside libc and go to the system heap; on ESP32 that is newlib
+  over the system heap. Only the call form `name(` is remapped, so a bare
+  function-pointer reference to `free` (none exist today) stays libc — the nm
+  gate would catch it. Non-allocating libc (`getenv`, …) is likewise exempt.
+- **nm gate** (`make check-mc-syms`, `test/multi_ctx/check_syms.sh`): every member
+  of `libspinel_rt_mc.a` and a freshly built generated program TU must carry
+  **zero** undefined references to `malloc/calloc/realloc/free/strdup`
+  (+ `reallocarray`/`posix_memalign`/`aligned_alloc`). Only `sp_ctx.o` — the
+  definition site — may. This catches a TU that loses the `-include` and silently
+  falls back to the shared heap. Wired as a `test-multi-ctx` prerequisite.
 
 ### Instance API
 
@@ -178,17 +210,37 @@ typedef struct {
 } sp_instance_config;
 
 sp_ctx *sp_instance_create(const sp_instance_config *cfg);
-void    sp_instance_destroy(sp_ctx *ctx);   /* frees heaps + roots */
+void    sp_instance_destroy(sp_ctx *ctx);   /* frees the arenas + root/scratch */
 ```
 
 Library-mode contract (`--no-main`): the host calls
 `sp_ctx_set_current(sp_instance_create(&cfg))` **before** invoking the
 program's `<name>_entry`; the generated entry is unchanged. `destroy` is unused
-by the kernel but required for leak-checking tests.
+by the kernel but required for leak-checking tests. It frees the ctx, the root
+stack, the mark scratch and the verify snapshot; the live GC-heap objects are
+*not* individually torn down (a hard teardown just drops the arenas — for a pool
+backend the whole pool is reclaimed, so this is leak-free by construction).
 
 Threshold contract: `gc_threshold` / `str_threshold` must be set well below the
 pool size. If the `alloc` hook returns NULL (pool exhausted) the runtime takes
-the existing `sp_oom_die` path.
+the existing `sp_oom_die` path (message + `exit`), never a silent NULL deref.
+
+Root stack: `root_stack_entries` bounds live `SP_GC_ROOT` registrations. On ESP32
+it should be sized to the program (the default `SP_GC_STACK_MAX` is large — an
+idle instance already reserves it). Overflowing it under `SP_MULTI_CTX` calls
+`sp_gc_root_overflow_die()` (message + `abort`) rather than dropping a root and
+corrupting the heap later; the default build keeps the historical return-0.
+
+### Testing
+
+- `make test-multi-ctx` runs, in order: the nm gate (`check_syms.sh`), the smoke
+  test (`smoke.sh` — single instance matches `-E`; N concurrent instances each
+  compute the right result; ASan clean), and the estalloc test (`estalloc.sh` —
+  pool isolation + stat independence, concurrent instances each on their own
+  pool, pool-exhaustion → `sp_oom_die`, root-overflow → abort; the isolation/
+  concurrency slice also runs under ASan with leak detection on).
+- estalloc (`test/multi_ctx/estalloc/`, BSD-3) is vendored purely as a test
+  backend; it is not part of the runtime.
 
 ## Constraints
 
