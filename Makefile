@@ -484,6 +484,13 @@ test:
 	+@$(MAKE) --no-print-directory clean-test-results
 	+@$(MAKE) --no-print-directory test-run
 
+# Library mode (--no-main / --entry / --inject) smoke test. Not part of the
+# .rb/.expected oracle harness (a --no-main unit is not standalone-runnable),
+# so it runs as a standalone script.
+.PHONY: test-lib-mode
+test-lib-mode: $(SPINEL) $(SP_RT_LIB)
+	@SPINEL=$(SPINEL) ./test/lib_mode/smoke.sh
+
 # The actual run. rbs-test golden-checks the RBS extractor (cheap, C-only).
 # rbs-seed-test checks the seeds actually reach the analyzer (incl. nested
 # classes, #1417).

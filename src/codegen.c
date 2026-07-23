@@ -1,5 +1,12 @@
 #include "codegen_internal.h"
 
+/* Library mode (`--no-main` / `--entry`): when g_no_main is set, codegen emits
+   `int <g_entry_name>(void)` (non-static) instead of `int main(argc,argv)`, so
+   the program can be linked into a host as a callable entry point. See
+   codegen.h and the main-emission block below. */
+int g_no_main = 0;
+const char *g_entry_name = "spinel_program_main";
+
 /* A reference-backed builtin (IO/Fiber/Thread/Queue/Mutex/ConditionVariable/
    Enumerator/Exception/Proc/Method) is a genuinely nilable C pointer: an unset
    ivar, a `return nil` method, or a cache miss yields NULL. It must box via
@@ -5597,16 +5604,20 @@ char *codegen_program(const NodeTable *nt) {
     }
   }
 
-  buf_puts(body, "int main(int argc,char**argv){\n");
+  if (g_no_main)
+    buf_printf(body, "int %s(void){\n", g_entry_name);
+  else
+    buf_puts(body, "int main(int argc,char**argv){\n");
   buf_puts(body, "    SP_GC_SAVE();\n");
   if (g_re_init_needed) buf_puts(body, "    sp_re_init();\n");
   /* Adopt the main thread and chain the scheduler's GC root hook. Placed after
      sp_re_init so it chains whatever globals hook that installed. */
   if (g_uses_threads) buf_puts(body, "    sp_sched_init();\n");
-  /* The ARGV copy loop only matters if the program reads ARGV / ARGF / $*. */
-  if (g_uses_argv)
+  /* The ARGV copy loop only matters if the program reads ARGV / ARGF / $*.
+     In library mode there is no argc/argv, so ARGV stays the empty default. */
+  if (g_uses_argv && !g_no_main)
     buf_puts(body, "    { sp_argv.len = argc - 1; sp_argv.data = (const char**)malloc(sizeof(const char*) * (size_t)(argc > 1 ? argc - 1 : 1)); for (int _ai = 0; _ai < argc - 1; _ai++) sp_argv.data[_ai] = sp_str_dup_external(argv[_ai + 1]); }\n");
-  if (g_uses_program_name)
+  if (g_uses_program_name && !g_no_main)
     buf_puts(body, "    sp_program_name = argc > 0 ? argv[0] : \"\";\n");
   /* Enable the backtrace substrate (Exception#backtrace, Kernel#caller) in
      debug builds only: --debug compiles at -O0 with non-inlined methods, so
@@ -5622,9 +5633,12 @@ char *codegen_program(const NodeTable *nt) {
   /* No PRNG seeding here: the shared Kernel stream (lib/sp_random.c)
      self-seeds lazily on its first draw, so a program that consumes no
      randomness pays nothing and one that does still varies per run. */
-  /* Register END blocks (atexit runs LIFO, so they execute in reverse registration order) */
-  for (int e = 1; e <= end_count; e++)
-    buf_printf(body, "    atexit(sp_end_fn_%d);\n", e);
+  /* Register END blocks (atexit runs LIFO, so they execute in reverse registration order).
+     Library mode has no process exit to hook, so END blocks run inline right
+     before the entry returns (see below), also in reverse registration order. */
+  if (!g_no_main)
+    for (int e = 1; e <= end_count; e++)
+      buf_printf(body, "    atexit(sp_end_fn_%d);\n", e);
   emit_scope_decls(c, &c->scopes[0], body);
   buf_puts(body, "\n");
   /* Hoist BEGIN blocks to run first */
@@ -5649,6 +5663,11 @@ char *codegen_program(const NodeTable *nt) {
   if (g_uses_threads) buf_puts(body, "    sp_sched_drain();\n");
   if (g_needs_at_exit)
     buf_puts(body, "  { mrb_int _ax_args[16] = {0}; for (mrb_int _ax = sp_at_exit_count - 1; _ax >= 0; _ax--) sp_proc_call(sp_at_exit_hooks[_ax], 0, _ax_args); }\n");
+  /* Library mode: run END blocks inline (reverse registration order, matching
+     atexit's LIFO) since there is no atexit registration. */
+  if (g_no_main)
+    for (int e = end_count; e >= 1; e--)
+      buf_printf(body, "    sp_end_fn_%d();\n", e);
   buf_puts(body, "  return 0;\n}\n");
 
   emit_regex_section(&b);

@@ -162,6 +162,24 @@ static int write_text_file(const char *path, const char *text) {
   return 1;
 }
 
+/* Read an entire file into a malloc'd NUL-terminated buffer (caller frees),
+   or NULL on error. Used by --inject to splice a raw C file after the
+   generated translation unit. */
+static char *read_text_file(const char *path) {
+  FILE *f = fopen(path, "rb");
+  if (!f) return NULL;
+  fseek(f, 0, SEEK_END);
+  long n = ftell(f);
+  if (n < 0) { fclose(f); return NULL; }
+  fseek(f, 0, SEEK_SET);
+  char *buf = (char *)malloc((size_t)n + 1);
+  if (!buf) { fclose(f); return NULL; }
+  size_t rd = fread(buf, 1, (size_t)n, f);
+  fclose(f);
+  buf[rd] = 0;
+  return buf;
+}
+
 static void usage(void) {
   fprintf(stderr,
     "Spinel AOT Compiler\n\n"
@@ -176,6 +194,9 @@ static void usage(void) {
     "  --link ARG  Extra link input (object/archive/-lLIB); repeatable\n"
     "  --version   Print the compiler build revision\n"
     "  -c          C source only (don't compile)\n"
+    "  --no-main   Emit `int <entry>(void)` instead of main(); implies -c (library mode)\n"
+    "  --entry NAME  Entry function name for --no-main (default: spinel_program_main)\n"
+    "  --inject FILE  Append a raw C file after the generated unit\n"
     "  -I DIR      Add a feature search root for `require \"name\"` (like ruby -I)\n"
     "  --emit-rbs  Dump inferred type signatures as RBS (-> app.rbs), no binary\n"
     "  --emit-types Dump per-position inferred types + diagnostics as JSON\n"
@@ -201,6 +222,7 @@ int main(int argc, char **argv) {
   const char *opt_level = "2";
   const char *int_overflow = "raise";
   const char *rbs_dir = NULL;
+  const char *inject_path = NULL;
   int c_only = 0, stdout_mode = 0, run_mode = 0, dump_ast = 0;
   int emit_rbs = 0, emit_types = 0, emit_symbol_map = 0;
   int debug = 0, line_map = 1, want_g = 0;
@@ -227,6 +249,15 @@ int main(int argc, char **argv) {
     else if (sp_streq(a, "--line-map"))    { line_map = 1; i++; }
     else if (sp_streq(a, "--no-line-map")) { line_map = 0; i++; }
     else if (sp_streq(a, "-c"))            { c_only = 1; i++; }
+    /* Library mode: emit `int <entry>(void)` instead of main(); imply -c since
+       the result is not a standalone runnable binary. --entry sets the name. */
+    else if (sp_streq(a, "--no-main"))     { g_no_main = 1; c_only = 1; i++; }
+    else if (!strncmp(a, "--entry=", 8))   { g_entry_name = a + 8; i++; }
+    else if (sp_streq(a, "--entry"))       { if (++i < argc) g_entry_name = argv[i]; i++; }
+    /* Splice a raw C file after the generated translation unit (escape hatch to
+       call generated static functions from hand-written C). */
+    else if (!strncmp(a, "--inject=", 9))  { inject_path = a + 9; i++; }
+    else if (sp_streq(a, "--inject"))      { if (++i < argc) inject_path = argv[i]; i++; }
     else if (sp_streq(a, "-I"))            { if (++i < argc) sp_add_feature_root(argv[i]); i++; }
     else if (!strncmp(a, "-I", 2) && a[2]) { sp_add_feature_root(a + 2); i++; }
     else if (sp_streq(a, "-S"))            { stdout_mode = 1; i++; }
@@ -389,6 +420,22 @@ int main(int argc, char **argv) {
   nt_free(nt);
   if (seed_path[0]) remove(seed_path);
   if (!csrc) { fprintf(stderr, "spinel: codegen failed\n"); return 1; }
+
+  /* --inject: concatenate a raw C file after all generated (static) definitions,
+     so hand-written C can call into the generated unit. */
+  if (inject_path) {
+    char *inj = read_text_file(inject_path);
+    if (!inj) { fprintf(stderr, "spinel: cannot read --inject file '%s'\n", inject_path); free(csrc); return 1; }
+    Str merged = {0};
+    s_add(&merged, csrc);
+    s_add(&merged, "\n/* --inject: ");
+    s_add(&merged, inject_path);
+    s_add(&merged, " */\n");
+    s_add(&merged, inj);
+    free(inj);
+    free(csrc);
+    csrc = merged.p;
+  }
 
   /* Emit modes already wrote their file; codegen returned empty C. */
   if (emit_rbs || emit_types || emit_symbol_map) {
