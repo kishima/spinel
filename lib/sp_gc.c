@@ -67,7 +67,11 @@ SP_TLS int sp_gc_nroots = 0;
 /* SP_MULTI_CTX: the root stack is one per-instance segment of SP_GC_ROOTS_CAP
    entries, sized by sp_instance_create; there is no overflow segment. */
 int sp_gc_roots_ext_reserve(int n) { return n <= SP_GC_ROOTS_CAP; }
-int sp_gc_root_push_slow(void **p) { (void)p; return 0; }
+/* A per-instance root stack can be sized small (sp_instance_config
+   .root_stack_entries). Dropping a root here would silently un-anchor a live
+   object and corrupt the heap on the next collection (a non-deterministic
+   use-after-free), so fail loudly and deterministically instead. */
+int sp_gc_root_push_slow(void **p) { (void)p; sp_gc_root_overflow_die(); return 0; }
 #endif
 #ifdef SP_THREADS
 sp_gc_wslot_t sp_gc_wslot[SP_MAX_WORKERS];   /* per-worker young head + flush delta, cache-line padded */
@@ -205,6 +209,9 @@ int sp_gc_rem_peak = 0;
 /* Issue #755: bail out cleanly on OOM rather than returning NULL into a
    caller that would deref it next. */
 void sp_oom_die(void){fputs("unhandled exception: out of memory\n",stderr);exit(1);}
+#ifdef SP_MULTI_CTX
+void sp_gc_root_overflow_die(void){fputs("unhandled exception: GC root stack overflow (sp_instance_config.root_stack_entries too small)\n",stderr);abort();}
+#endif
 
 /* ---- GC verify (SPINEL_GC_VERIFY=1): a sorted snapshot of every
  * registered header, so the scan-time membership test is O(log n). ---- */

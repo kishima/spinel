@@ -547,6 +547,10 @@ void sp_gc_collect_retune(void);
 void sp_stw_collect(void);
 void sp_gc_collect_request(void);   /* explicit GC.start: same barrier, forced */
 void sp_oom_die(void);
+/* SP_MULTI_CTX only: fatal handler for GC-root-stack overflow (see
+   _sp_gc_root_push). Declared unconditionally; defined and referenced only under
+   SP_MULTI_CTX, so the default build neither calls nor links it. */
+void sp_gc_root_overflow_die(void);
 
 /* ---- Embedder callbacks supplied by the generated TU ----
  * The collector cannot own the program's roots or string heap (they are
