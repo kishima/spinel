@@ -21,10 +21,13 @@
 #define SP_CTX_H
 
 #include <stddef.h>
-#include "sp_types.h"   /* mrb_int, sp_gc_hdr fwd via sp_gc.h consumers */
+#include <stdint.h>
+#include "sp_types.h"    /* mrb_int */
+#include "sp_random.h"   /* sp_Random (by value below); pulls only sp_types.h */
 
 struct sp_gc_hdr;
 struct sp_str_hdr;
+struct mrb_regexp_pattern;   /* re_* engine handle (sp_re.h) */
 
 /* Per-instance runtime state. Field names are the original global names with
  * their sp_/sp_gc_ prefix dropped; the compat macros below re-attach them. */
@@ -65,6 +68,22 @@ typedef struct sp_ctx {
   void (*gc_mark_globals_hook)(void);
   void (*gc_str_sweep_hook)(void);
   void (*gc_mark_suspended_fibers_hook)(void);
+
+  /* --- regexp last-match state (was sp_re.c, $~) --- */
+  const char *re_captures[10];
+  int         re_caps[64];
+  const char *re_last_str;
+  const char *re_match_str;
+  const char *re_match_pre;
+  const char *re_match_post;
+  int         re_last_ncap;
+  const struct mrb_regexp_pattern *re_last_pat;
+
+  /* --- RNG state (was sp_random.c) --- */
+  uint64_t   krand_state;
+  int        krand_seeded;
+  sp_Random  random_default;
+  mrb_int    kernel_seed;
 
   /* --- allocation backend (T3-2 sp_mem_* hooks) --- */
   void  *mem_ud;
@@ -129,6 +148,22 @@ void    sp_instance_destroy(sp_ctx *ctx);
 #define sp_gc_mark_globals_hook          (SP_CTX()->gc_mark_globals_hook)
 #define sp_gc_str_sweep_hook             (SP_CTX()->gc_str_sweep_hook)
 #define sp_gc_mark_suspended_fibers_hook (SP_CTX()->gc_mark_suspended_fibers_hook)
+
+/* regexp last-match ($~) state */
+#define sp_re_captures    (SP_CTX()->re_captures)
+#define sp_re_caps        (SP_CTX()->re_caps)
+#define sp_re_last_str    (SP_CTX()->re_last_str)
+#define sp_re_match_str   (SP_CTX()->re_match_str)
+#define sp_re_match_pre   (SP_CTX()->re_match_pre)
+#define sp_re_match_post  (SP_CTX()->re_match_post)
+#define sp_re_last_ncap   (SP_CTX()->re_last_ncap)
+#define sp_re_last_pat    (SP_CTX()->re_last_pat)
+
+/* RNG state */
+#define sp_krand_state      (SP_CTX()->krand_state)
+#define sp_krand_seeded     (SP_CTX()->krand_seeded)
+#define sp_random_default   (SP_CTX()->random_default)
+#define sp_kernel_seed      (SP_CTX()->kernel_seed)
 
 /* Root-stack capacity: dynamic per instance. */
 #define SP_GC_ROOTS_CAP (SP_CTX()->gc_roots_cap)
