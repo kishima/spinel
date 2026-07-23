@@ -36,6 +36,7 @@
 struct sp_gc_hdr;
 struct sp_str_hdr;
 struct mrb_regexp_pattern;   /* re_* engine handle (sp_re.h) */
+struct sp_Proc;              /* proc handle (sp_runtime.h); trap_proc[] below */
 
 /* Per-instance runtime state. Field names are the original global names with
  * their sp_/sp_gc_ prefix dropped; the compat macros below re-attach them. */
@@ -108,6 +109,15 @@ typedef struct sp_ctx {
   sp_RbVal    (*obj_to_hash_fn)(sp_RbVal);
   const char *(*obj_inspect_fn)(int cls_id, void *p);
   const char *(*obj_to_s_fn)(int cls_id, void *p);
+
+  /* --- TU-provided per-program state, relocated for multi-program linking
+   *     (T4-0). These are defined non-static in sp_runtime.h, so two generated
+   *     TUs in one binary would collide; under SP_MULTI_CTX they live here
+   *     instead (data below; the ~20 TU functions become per-ctx pointers). --- */
+  sp_RbVal        proc_poly_ret;         /* was _sp_proc_poly_ret */
+  sp_RbVal        proc_poly_args[16];    /* was _sp_proc_poly_args */
+  const char     *trap_state[SP_SIG_MAX];/* was sp_trap_state */
+  struct sp_Proc *trap_proc[SP_SIG_MAX]; /* was sp_trap_proc */
 
   /* --- allocation backend (T3-2 sp_mem_* hooks) --- */
   void  *mem_ud;
@@ -212,6 +222,14 @@ void    sp_instance_destroy(sp_ctx *ctx);
 
 /* Root-stack capacity: dynamic per instance. */
 #define SP_GC_ROOTS_CAP (SP_CTX()->gc_roots_cap)
+
+/* TU-provided per-program state relocated into the ctx (T4-0, data). The
+ * runtime .c files reach these through these macros; sp_runtime.h drops the
+ * corresponding definitions under SP_MULTI_CTX. */
+#define _sp_proc_poly_ret   (SP_CTX()->proc_poly_ret)
+#define _sp_proc_poly_args   (SP_CTX()->proc_poly_args)
+#define sp_trap_state        (SP_CTX()->trap_state)
+#define sp_trap_proc         (SP_CTX()->trap_proc)
 
 /* The libc allocation names are remapped to per-instance wrappers by
  * sp_mem_override.h, force-included into every mc TU (see that header and

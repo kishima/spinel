@@ -2573,8 +2573,10 @@ static SP_TLS unsigned char sp_pending_exc_flags = 0;
 /* Signal.trap state (defined with the Signal machinery below; declared here
    so the GC mark hook can keep installed proc handlers live). */
 struct sp_Proc;
+#ifndef SP_MULTI_CTX  /* relocated into sp_ctx for multi-program linking (T4-0) */
 const char *sp_trap_state[SP_SIG_MAX];
 struct sp_Proc *sp_trap_proc[SP_SIG_MAX];
+#endif
 SP_COLD void sp_exc_stage_recv(sp_RbVal v) { sp_pending_exc_recv = v; sp_pending_exc_flags |= 1; }
 SP_COLD void sp_exc_stage_key(sp_RbVal v)  { sp_pending_exc_key = v;  sp_pending_exc_flags |= 2; }
 SP_COLD void sp_exc_stage_val(sp_RbVal v)  { sp_pending_exc_val = v;  sp_pending_exc_flags |= 4; }
@@ -7143,12 +7145,16 @@ sp_PolyArray *sp_Enumerator_to_a(sp_Enumerator *e);
    generated proc body live in the same TU and share this slot. Per-worker
    (SP_TLS): a concurrent Proc#call would otherwise race, and no safepoint poll
    lies between a body's store and the call site's read. */
+#ifndef SP_MULTI_CTX  /* relocated into sp_ctx (T4-0) */
 SP_TLS sp_RbVal _sp_proc_poly_ret;
+#endif
 /* Boxed-argument side-channel of the same ABI: a poly (or float) proc
    parameter reads its argument back from here, since it does not fit the
    mrb_int[] slot. Declared here so the compose/curry/to_proc trampolines
    below can publish through it like every generated call site does. */
+#ifndef SP_MULTI_CTX  /* relocated into sp_ctx (T4-0) */
 SP_TLS sp_RbVal _sp_proc_poly_args[16];
+#endif
 /* The block passed to a first-class proc's .call { }: the caller publishes it
    here just before sp_proc_call, and the callee's &block-param prologue
    consumes (and clears) it. Same discipline as _sp_proc_poly_args (#2648). */

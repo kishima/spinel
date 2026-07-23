@@ -84,6 +84,7 @@ extern SP_TLS int sp_gc_nroots;
    Marshal loader, which builds GC arrays/hashes across a recursive parse --
    can root their in-flight objects too. Helpers touch only the extern root
    stack above, so relocating them is layout-neutral. */
+void sp_gc_root_overflow_die(void);  /* declared before its inline call site below */
 static inline int _sp_gc_root_push(void **p) {
   if (sp_gc_nroots < SP_GC_ROOTS_CAP) { sp_gc_roots[sp_gc_nroots++] = p; return 1; }
 #ifdef SP_MULTI_CTX
