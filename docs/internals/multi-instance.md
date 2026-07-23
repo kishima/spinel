@@ -66,8 +66,8 @@ change); **SHARED** = stays a process global; **OUT** = out of scope
 | `sp_gc_mark_stack`, `sp_gc_mark_top` | mark scratch |
 | `sp_gc_vsnap`, `sp_gc_vsnap_n`, `sp_gc_vsnap_cap` | verify snapshot |
 | `sp_gc_verify`, `sp_gc_max_bytes`, `sp_gc_max_bytes_init`, `sp_gc_dbg_ctx` | debug/watermark |
-| `sp_gc_mark_globals_hook` | **CTX — critical.** codegen emits `sp_gc_mark_globals_hook = sp_mark_user_globals;` per program (`src/codegen.c`). With one global pointer, a second instance overwrites the first and GC would mark the wrong program's globals. As a ctx field the compat macro routes the assignment (run after `sp_ctx_set_current`) into the right instance automatically — codegen unchanged. |
-| `sp_gc_str_sweep_hook` | set once by the `sp_alloc.c` constructor to `sp_str_sweep` (same fn for all); could stay SHARED, but move to CTX for uniformity so an instance's sweep uses its own string heap |
+| `sp_gc_mark_globals_hook` | **CTX — critical.** Installed per program: the runtime default `sp_re_mark_globals`, overridden by codegen's `sp_gc_mark_globals_hook = sp_mark_user_globals;` when the program has heap-typed globals. With one global pointer, a second instance overwrites the first and GC would mark the wrong program's globals. As a ctx field the compat macro routes the assignment into the right instance. **The install must run after `sp_ctx_set_current`, so it cannot stay a process constructor** — see "Per-instance TU init" below. |
+| `sp_gc_str_sweep_hook` | `sp_str_sweep` (same fn for all instances). Default build: set by the `sp_alloc.c` constructor. MC: `sp_instance_create` sets `c->gc_str_sweep_hook` (the constructor writes a ctx field, which does not exist at process-constructor time). |
 | `sp_gc_mark_suspended_fibers_hook` | OUT normally (fibers unused); leave NULL |
 
 ### `lib/sp_re.c` → CTX (all `SP_TLS`)
@@ -204,3 +204,31 @@ the existing `sp_oom_die` path.
 - `__attribute__((constructor))` init runs once per process; it must not be
   confused with per-instance init, which lives entirely in
   `sp_instance_create`.
+
+### Per-instance TU init (the constructor trap)
+
+A generated program TU installs per-program hooks — the GC globals-mark
+(`sp_gc_install_tu_hooks`), the JSON/poly vtable (`sp_json_install_hooks`), and
+the string-sweep hook (`sp_alloc.c`) — that in the default build run as
+`__attribute__((constructor))` before `main`. Under `SP_MULTI_CTX` those hooks
+are per-instance ctx fields reached through `SP_CTX()`, and **no instance is
+current at process-constructor time** (`SP_CTX()` is NULL), so a constructor
+that writes them dereferences NULL before `main`.
+
+Fix: the hook installers become plain functions under `SP_MULTI_CTX` (the
+`SP_TU_CTOR` macro is `__attribute__((constructor))` by default, empty under
+MC), and the program entry calls them once the host has made an instance
+current:
+
+- `sp_runtime.h` provides `sp_tu_ctx_init()` (MC only), which calls
+  `sp_gc_install_tu_hooks()` + `sp_json_install_hooks()`.
+- codegen emits `#ifdef SP_MULTI_CTX sp_tu_ctx_init(); #endif` at the top of the
+  entry, **before** `sp_re_init()`, so the runtime defaults are installed first
+  and `sp_re_init()` then layers the symbol/regex/user-globals overrides on top.
+- the string-sweep and `SPINEL_GC_VERIFY` are read in `sp_instance_create`.
+
+All of this is stripped in the default build (guards + macro fold), so the
+generated code and runtime stay byte-identical there. Validated by
+`test/multi_ctx/smoke.sh` (`make test-multi-ctx`): single-instance output
+matches `-E`, N concurrent instances each compute the correct result, clean
+under ASan.
