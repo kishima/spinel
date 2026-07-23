@@ -59,9 +59,13 @@ static long sp_sock_room(int fd) {
 
 /* Provided by the generated TU / libspinel_rt.a. */
 extern void *sp_gc_alloc(size_t sz, void (*fin)(void *), void (*scn)(void *));
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 extern SP_NORETURN void sp_raise_cls(const char *cls, const char *msg);
+#endif
 extern const char *sp_errno_class_name(int e);   /* lib/sp_exc.c: the Errno:: class for a C errno */
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 extern const char *sp_sprintf(const char *fmt, ...);
+#endif
 
 /* The finalizer honors autoclose: an IO whose fd the program disowned
    (io.autoclose = false after wrapping the fd itself) flushes and abandons

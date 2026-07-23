@@ -116,6 +116,56 @@ static int sp_bt_n = 0;
 #include "sp_fiber.h"
 /* sp_thread + the cooperative scheduler (Phase 0); bodies in lib/sp_sched.c. */
 #include "sp_sched.h"
+#ifdef SP_MULTI_CTX
+/* T4-0: sp_ctx.h remaps these TU function names to per-instance pointers so
+ * the runtime .c files reach the current instance's copy. Within THIS TU we own
+ * the definitions and call them directly (they are this instance's copies, and
+ * a direct call is cheaper), so drop the macros here. sp_tu_ctx_init registers
+ * the definitions into the ctx for the runtime side. */
+#undef sp_sprintf
+#undef sp_box_proc
+#undef sp_bigint_raise_zerodiv
+#undef sp_proc_call
+#undef sp_exc_ctx_new
+#undef sp_exc_ctx_free
+#undef sp_exc_ctx_save
+#undef sp_exc_ctx_load
+#undef sp_exc_ctx_mark
+#undef sp_exc_arm
+#undef sp_exc_disarm
+#undef sp_exc_cur_cls
+#undef sp_exc_cur_msg
+#undef sp_exc_cur_obj
+#undef sp_exc_stage_recv
+#undef sp_fiber_reraise
+#undef sp_raise_cls
+#undef sp_raise_stop_iteration
+#undef sp_signal_resolve
+#undef sp_signal_signame
+/* Forward-declare the routed functions (static) so sp_tu_ctx_init, which takes
+   their addresses, sees them regardless of where in this header each is
+   defined. */
+SP_TU_STATIC const char *sp_sprintf(const char *, ...);
+SP_TU_STATIC sp_RbVal sp_box_proc(void *);
+SP_TU_STATIC void sp_bigint_raise_zerodiv(const char *);
+SP_TU_STATIC sp_int sp_proc_call(struct sp_Proc *, sp_int, sp_int *);
+SP_TU_STATIC void *sp_exc_ctx_new(void);
+SP_TU_STATIC void sp_exc_ctx_free(void *);
+SP_TU_STATIC void sp_exc_ctx_save(void *);
+SP_TU_STATIC void sp_exc_ctx_load(void *);
+SP_TU_STATIC void sp_exc_ctx_mark(void *);
+SP_TU_STATIC void sp_exc_arm(jmp_buf);
+SP_TU_STATIC void sp_exc_disarm(void);
+SP_TU_STATIC const char *sp_exc_cur_cls(void);
+SP_TU_STATIC const char *sp_exc_cur_msg(void);
+SP_TU_STATIC void *sp_exc_cur_obj(void);
+SP_TU_STATIC void sp_exc_stage_recv(sp_RbVal);
+SP_TU_STATIC void sp_fiber_reraise(const char *, const char *, void *);
+SP_TU_STATIC SP_NORETURN SP_COLD void sp_raise_cls(const char *, const char *);
+SP_TU_STATIC SP_NORETURN void sp_raise_stop_iteration(sp_RbVal);
+SP_TU_STATIC int sp_signal_resolve(sp_RbVal);
+SP_TU_STATIC const char *sp_signal_signame(sp_int);
+#endif
 
 /* Every SP_BUILTIN_* cls_id must name exactly one kind. They are declared in
    TWO headers -- sp_alloc.h and sp_gc.h, the latter because the inline mark
@@ -180,7 +230,7 @@ void sp_warning_warn(const char *msg);
    `a / 0`, `a % 0`, `a.divmod(0)`, `a.ceildiv(0)`, and `a.pow(e, 0)` all
    raise ZeroDivisionError instead of triggering C undefined behaviour
    (SIGFPE on x86) or silently returning 0. */
-SP_NORETURN SP_COLD void sp_raise_cls(const char *cls, const char *msg);
+SP_TU_STATIC SP_NORETURN SP_COLD void sp_raise_cls(const char *cls, const char *msg);
 
 /* The unresolved-call gate (codegen_call.c) raises NoMethodError through this
    single recognizable token under SPINEL_GATE_RAISE, so coercion sites can
@@ -343,7 +393,7 @@ static inline sp_int sp_iremainder(sp_int a, sp_int b) {
 /* sp_gcd / sp_lcm / sp_powmod / sp_ceildiv / sp_int_clamp / sp_int_sqrt
    now live in libspinel_rt.a (lib/sp_core.c); declared via sp_core.h. */
 static inline char *sp_str_alloc_raw(size_t total_with_null);  /* fwd decl */
-const char *sp_sprintf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));   /* fwd decl */
+SP_TU_STATIC const char *sp_sprintf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));   /* fwd decl */
 /* sp_ipow10 / sp_int_round / sp_int_ceil / sp_int_floor /
    sp_int_truncate / sp_str_oct now live in libspinel_rt.a
    (lib/sp_core.c); declared via sp_core.h. */
@@ -366,8 +416,8 @@ static inline sp_int sp_i64_to_int(int64_t v){
 
 /* Forward decls for helpers used across this header (and by the
    string->number parsers that now live in libspinel_rt.a). */
-SP_NORETURN SP_COLD void sp_raise_cls(const char *cls, const char *msg);
-const char *sp_sprintf(const char *fmt, ...);
+SP_TU_STATIC SP_NORETURN SP_COLD void sp_raise_cls(const char *cls, const char *msg);
+SP_TU_STATIC const char *sp_sprintf(const char *fmt, ...);
 
 /* String -> number parsers now live in libspinel_rt.a (lib/sp_core.c). */
 #include "sp_core.h"
@@ -874,7 +924,7 @@ static sp_StrArray*sp_readlines(void){sp_StrArray*a=sp_StrArray_new();SP_GC_ROOT
 #ifdef SPINEL_EXT_HOST
 const char*sp_sprintf(const char*fmt,...);
 #else
-const char*sp_sprintf(const char*fmt,...){char _sp_tmp[4096];va_list ap;va_start(ap,fmt);int _sp_n=vsnprintf(_sp_tmp,sizeof(_sp_tmp),fmt,ap);va_end(ap);if(_sp_n<0)_sp_n=0;char*b=sp_str_alloc((size_t)_sp_n);if(_sp_n<(int)sizeof(_sp_tmp)){memcpy(b,_sp_tmp,(size_t)_sp_n);}
+SP_TU_STATIC const char*sp_sprintf(const char*fmt,...){char _sp_tmp[4096];va_list ap;va_start(ap,fmt);int _sp_n=vsnprintf(_sp_tmp,sizeof(_sp_tmp),fmt,ap);va_end(ap);if(_sp_n<0)_sp_n=0;char*b=sp_str_alloc((size_t)_sp_n);if(_sp_n<(int)sizeof(_sp_tmp)){memcpy(b,_sp_tmp,(size_t)_sp_n);}
 else{/* result didn't fit the stack temp; re-render at full width (sp_str_alloc gives _sp_n bytes + NUL) so long string interpolations aren't truncated. re-arm the va_list rather than va_copy so the common fast path pays nothing */va_start(ap,fmt);vsnprintf(b,(size_t)_sp_n+1,fmt,ap);va_end(ap);}return b;}
 #endif
 /* Use a temp pointer for realloc so the original buffer is not leaked
@@ -1632,7 +1682,7 @@ uint32_t sp_re_opts_to_flags(sp_int o);
 #ifdef SPINEL_EXT_HOST
 sp_RbVal sp_box_proc(void *p);
 #else
-sp_RbVal sp_box_proc(void *p)        { return sp_box_obj(p, SP_BUILTIN_PROC); }
+SP_TU_STATIC sp_RbVal sp_box_proc(void *p)        { return sp_box_obj(p, SP_BUILTIN_PROC); }
 #endif
 
 /* CRuby-compatible Array#index / #rindex / #find_index: returns
@@ -3088,17 +3138,17 @@ struct sp_Proc *sp_trap_proc[SP_SIG_MAX];
 #ifdef SPINEL_EXT_HOST
 SP_COLD void sp_exc_stage_recv(sp_RbVal v);
 #else
-SP_COLD void sp_exc_stage_recv(sp_RbVal v) { sp_pending_exc_recv = v; sp_pending_exc_flags |= 1; }
+SP_TU_STATIC SP_COLD void sp_exc_stage_recv(sp_RbVal v) { sp_pending_exc_recv = v; sp_pending_exc_flags |= 1; }
 #endif
 #ifdef SPINEL_EXT_HOST
 SP_COLD void sp_exc_stage_key(sp_RbVal v);
 #else
-SP_COLD void sp_exc_stage_key(sp_RbVal v)  { sp_pending_exc_key = v;  sp_pending_exc_flags |= 2; }
+SP_TU_STATIC SP_COLD void sp_exc_stage_key(sp_RbVal v)  { sp_pending_exc_key = v;  sp_pending_exc_flags |= 2; }
 #endif
 #ifdef SPINEL_EXT_HOST
 SP_COLD void sp_exc_stage_val(sp_RbVal v);
 #else
-SP_COLD void sp_exc_stage_val(sp_RbVal v)  { sp_pending_exc_val = v;  sp_pending_exc_flags |= 4; }
+SP_TU_STATIC SP_COLD void sp_exc_stage_val(sp_RbVal v)  { sp_pending_exc_val = v;  sp_pending_exc_flags |= 4; }
 #endif
 /* frozen-Hash raise carrying the receiver (identity-preserving) (#3119) */
 static void __attribute__((noinline,cold)) sp_raise_frozen_hash_at(void *h, int cls_id) {
@@ -9925,11 +9975,34 @@ SP_TU_CTOR static void sp_json_install_hooks(void) {
 #ifdef SP_MULTI_CTX
 /* Install this TU's per-instance hooks into the current sp_ctx. The program
    entry calls this (see codegen) once the host has made an instance current,
-   replacing the default build's process constructors. sp_re_init(), emitted
+   replacing the default build's process constructors. sp_tu_init(), emitted
    after this call, then layers the symbol/regex/user-globals overrides on top. */
 static void sp_tu_ctx_init(void) {
   sp_gc_install_tu_hooks();
   sp_json_install_hooks();
+  /* T4-0: register this TU's copies of the runtime-called functions into the
+     ctx (names are direct here -- see the #undef block after sp_gc.h). */
+  sp_ctx *_c = sp_ctx_current();
+  _c->fn_sprintf              = sp_sprintf;
+  _c->fn_box_proc             = sp_box_proc;
+  _c->fn_bigint_raise_zerodiv = sp_bigint_raise_zerodiv;
+  _c->fn_proc_call            = sp_proc_call;
+  _c->fn_exc_ctx_new          = sp_exc_ctx_new;
+  _c->fn_exc_ctx_free         = sp_exc_ctx_free;
+  _c->fn_exc_ctx_save         = sp_exc_ctx_save;
+  _c->fn_exc_ctx_load         = sp_exc_ctx_load;
+  _c->fn_exc_ctx_mark         = sp_exc_ctx_mark;
+  _c->fn_exc_arm              = sp_exc_arm;
+  _c->fn_exc_disarm           = sp_exc_disarm;
+  _c->fn_exc_cur_cls          = sp_exc_cur_cls;
+  _c->fn_exc_cur_msg          = sp_exc_cur_msg;
+  _c->fn_exc_cur_obj          = sp_exc_cur_obj;
+  _c->fn_exc_stage_recv       = sp_exc_stage_recv;
+  _c->fn_fiber_reraise        = sp_fiber_reraise;
+  _c->fn_raise_cls            = sp_raise_cls;
+  _c->fn_raise_stop_iteration = sp_raise_stop_iteration;
+  _c->fn_signal_resolve       = sp_signal_resolve;
+  _c->fn_signal_signame       = sp_signal_signame;
 }
 #endif
 
@@ -10174,7 +10247,7 @@ static void sp_raise_stack_overflow(void) {
   sp_poly_recur_unwind();
   longjmp(sp_exc_stack[sp_exc_top-1], 1);
 }
-SP_NORETURN SP_COLD void sp_raise_cls(const char *cls, const char *msg) {
+SP_TU_STATIC SP_NORETURN SP_COLD void sp_raise_cls(const char *cls, const char *msg) {
   /* Launder the message onto the string heap and root the copy before anything
      below allocates. `msg` is the caller's own pointer and comes in one of two
      shapes, neither of which survives a collection here. A raiser that formats
@@ -10707,7 +10780,7 @@ SP_NORETURN SP_COLD static void sp_raise_poly(sp_RbVal v) {
 #ifdef SPINEL_EXT_HOST
 SP_NORETURN void sp_raise_stop_iteration(sp_RbVal result);
 #else
-SP_NORETURN void sp_raise_stop_iteration(sp_RbVal result) {
+SP_TU_STATIC SP_NORETURN void sp_raise_stop_iteration(sp_RbVal result) {
   /* Marker-prefixed message: sp_mark_string reads msg[-1] as the GC marker, so a
      bare rodata literal would be an out-of-bounds read at a section edge. */
   const char *msg = (&("\xff" "iteration reached an end")[1]);
@@ -10787,7 +10860,7 @@ static sp_RbVal sp_exc_tag_acc(sp_Exception *e) {
 #ifdef SPINEL_EXT_HOST
 void sp_bigint_raise_zerodiv(const char *msg);
 #else
-void sp_bigint_raise_zerodiv(const char *msg) { sp_raise_cls("ZeroDivisionError", msg); }
+SP_TU_STATIC void sp_bigint_raise_zerodiv(const char *msg) { sp_raise_cls("ZeroDivisionError", msg); }
 #endif
 /* sp_exc_is_a: see earlier definition (takes volatile sp_Exception *) */
 
@@ -11146,12 +11219,12 @@ typedef struct {
 #ifdef SPINEL_EXT_HOST
 void *sp_exc_ctx_new(void);
 #else
-void *sp_exc_ctx_new(void) { return calloc(1, sizeof(sp_exc_ctx_t)); }
+SP_TU_STATIC void *sp_exc_ctx_new(void) { return calloc(1, sizeof(sp_exc_ctx_t)); }
 #endif
 #ifdef SPINEL_EXT_HOST
 void sp_exc_ctx_free(void *p);
 #else
-void sp_exc_ctx_free(void *p) {
+SP_TU_STATIC void sp_exc_ctx_free(void *p) {
   sp_exc_ctx_t *x = (sp_exc_ctx_t *)p;
   if (!x) return;
   free(x->es); free(x->em); free(x->ec); free(x->eo);
@@ -11164,7 +11237,7 @@ void sp_exc_ctx_free(void *p) {
 #ifdef SPINEL_EXT_HOST
 void sp_exc_ctx_save(void *p);
 #else
-void sp_exc_ctx_save(void *p) {            /* current globals -> ctx */
+SP_TU_STATIC void sp_exc_ctx_save(void *p) {            /* current globals -> ctx */
   sp_exc_ctx_t *x = (sp_exc_ctx_t *)p;
   int n = sp_exc_top;
   if (n > x->ecap) { x->ecap = n;
@@ -11234,7 +11307,7 @@ void sp_exc_ctx_save(void *p) {            /* current globals -> ctx */
 #ifdef SPINEL_EXT_HOST
 void sp_exc_ctx_load(void *p);
 #else
-void sp_exc_ctx_load(void *p) {            /* ctx -> current globals */
+SP_TU_STATIC void sp_exc_ctx_load(void *p) {            /* ctx -> current globals */
   sp_exc_ctx_t *x = (sp_exc_ctx_t *)p;
   for (int i = 0; i < x->en; i++) { memcpy(sp_exc_stack[i], x->es[i], sizeof(jmp_buf));
     sp_exc_msg[i] = x->em[i]; sp_exc_cls[i] = x->ec[i]; sp_exc_obj[i] = x->eo[i];
@@ -11266,7 +11339,7 @@ void sp_exc_ctx_load(void *p) {            /* ctx -> current globals */
 #ifdef SPINEL_EXT_HOST
 void sp_exc_ctx_mark(void *p);
 #else
-void sp_exc_ctx_mark(void *p) {            /* GC: mark a suspended fiber's carried exc objects */
+SP_TU_STATIC void sp_exc_ctx_mark(void *p) {            /* GC: mark a suspended fiber's carried exc objects */
   sp_exc_ctx_t *x = (sp_exc_ctx_t *)p;
   if (!x) return;
   for (int i = 0; i < x->en; i++) if (x->eo[i]) sp_gc_mark(x->eo[i]);
@@ -11284,34 +11357,34 @@ void sp_exc_ctx_mark(void *p) {            /* GC: mark a suspended fiber's carri
 #ifdef SPINEL_EXT_HOST
 void sp_exc_arm(jmp_buf b);
 #else
-void sp_exc_arm(jmp_buf b)     { sp_exc_check_depth(); memcpy(sp_exc_stack[sp_exc_top], b, sizeof(jmp_buf)); sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++; }
+SP_TU_STATIC void sp_exc_arm(jmp_buf b)     { sp_exc_check_depth(); memcpy(sp_exc_stack[sp_exc_top], b, sizeof(jmp_buf)); sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++; }
 #endif
 #ifdef SPINEL_EXT_HOST
 void sp_exc_disarm(void);
 #else
-void sp_exc_disarm(void)       { if (sp_exc_top > 0) sp_exc_top--; }
+SP_TU_STATIC void sp_exc_disarm(void)       { if (sp_exc_top > 0) sp_exc_top--; }
 #endif
 #ifdef SPINEL_EXT_HOST
 const char *sp_exc_cur_cls(void);
 #else
-const char *sp_exc_cur_cls(void) { return sp_exc_top > 0 ? sp_exc_cls[sp_exc_top-1] : sp_str_empty; }
+SP_TU_STATIC const char *sp_exc_cur_cls(void) { return sp_exc_top > 0 ? sp_exc_cls[sp_exc_top-1] : sp_str_empty; }
 #endif
 #ifdef SPINEL_EXT_HOST
 const char *sp_exc_cur_msg(void);
 #else
-const char *sp_exc_cur_msg(void) { return sp_exc_top > 0 ? sp_exc_msg[sp_exc_top-1] : sp_str_empty; }
+SP_TU_STATIC const char *sp_exc_cur_msg(void) { return sp_exc_top > 0 ? sp_exc_msg[sp_exc_top-1] : sp_str_empty; }
 #endif
 #ifdef SPINEL_EXT_HOST
 void *sp_exc_cur_obj(void);
 #else
-void *sp_exc_cur_obj(void)       { return sp_exc_top > 0 ? sp_exc_obj[sp_exc_top-1] : NULL; }
+SP_TU_STATIC void *sp_exc_cur_obj(void)       { return sp_exc_top > 0 ? sp_exc_obj[sp_exc_top-1] : NULL; }
 #endif
 /* Re-raise a fiber's unhandled exception in the resumer's context (the fiber
    trampoline caught it on the fiber's stack, then returned cooperatively). */
 #ifdef SPINEL_EXT_HOST
 void sp_fiber_reraise(const char *cls, const char *msg, void *obj);
 #else
-void sp_fiber_reraise(const char *cls, const char *msg, void *obj) {
+SP_TU_STATIC void sp_fiber_reraise(const char *cls, const char *msg, void *obj) {
   if (obj) sp_pending_exc_obj = obj;
   sp_raise_cls(cls, msg);
 }
@@ -12551,7 +12624,7 @@ static sp_RbVal sp_rbs_check(sp_RbVal v, int want, const char *slot, const char 
 #ifdef SPINEL_EXT_HOST
 sp_int sp_proc_call(sp_Proc *p, sp_int argc, sp_int *args);
 #else
-sp_int sp_proc_call(sp_Proc *p, sp_int argc, sp_int *args) { if (!p || !p->fn) return 0; if (!args) { sp_int noargs[16] = {0}; return ((sp_int (*)(void *, sp_int, sp_int *))p->fn)(p->cap, 0, noargs); } return ((sp_int (*)(void *, sp_int, sp_int *))p->fn)(p->cap, argc, args); }
+SP_TU_STATIC sp_int sp_proc_call(sp_Proc *p, sp_int argc, sp_int *args) { if (!p || !p->fn) return 0; if (!args) { sp_int noargs[16] = {0}; return ((sp_int (*)(void *, sp_int, sp_int *))p->fn)(p->cap, 0, noargs); } return ((sp_int (*)(void *, sp_int, sp_int *))p->fn)(p->cap, argc, args); }
 #endif
 /* The receiver of a written `<proc>.call` / `.()` / `[]` / `.yield`. A nil
    Proc slot is NULL, and sp_proc_call answers 0 for NULL because the runtime
@@ -13076,7 +13149,7 @@ static sp_StrIntHash *sp_signal_list(void) {
 #ifdef SPINEL_EXT_HOST
 const char *sp_signal_signame(sp_int no);
 #else
-const char *sp_signal_signame(sp_int no) {
+SP_TU_STATIC const char *sp_signal_signame(sp_int no) {
   for (int i = 0; sp_sig_table[i].name; i++)
     if (sp_sig_table[i].no == (int)no) return sp_sig_table[i].name;
   return NULL;   /* nil for an unknown number, as in CRuby 3.4+ */
@@ -13087,7 +13160,7 @@ const char *sp_signal_signame(sp_int no) {
 #ifdef SPINEL_EXT_HOST
 SP_COLD int sp_signal_resolve(sp_RbVal sig);
 #else
-SP_COLD int sp_signal_resolve(sp_RbVal sig) {
+SP_TU_STATIC SP_COLD int sp_signal_resolve(sp_RbVal sig) {
   const char *nm = NULL;
   if (sig.tag == SP_TAG_STR) nm = sig.v.s;
   else if (sig.tag == SP_TAG_SYM) nm = sp_sym_to_s((sp_sym)sig.v.i);

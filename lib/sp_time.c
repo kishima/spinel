@@ -286,7 +286,9 @@ sp_Time sp_time_with_usec_f(sp_Time t, double usec) {
    time and any other shape raise CRuby's ArgumentError messages; anything
    the grammar does not cover must be loud, never a guessed instant. */
 sp_Time sp_time_parse(const char *s) {SP_GC_ROOT_STR(s);
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
   const char *sp_sprintf(const char *fmt, ...);  /* generated TU */
+#endif
   int y, mo, d, h, mi, sec, n = 0;
   if (sscanf(s, "%4d-%2d-%2d%n", &y, &mo, &d, &n) != 3 || n == 0)
     sp_raise_cls("ArgumentError", sp_sprintf("can't parse: \"%s\"", s));
