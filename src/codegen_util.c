@@ -541,7 +541,19 @@ void emit_block_locals_reset(Compiler *c, int blk, Buf *b, int indent) {
         Scope *sc = comp_scope_of(c, blk);
         LocalVar *lv = sc ? scope_local(sc, tmpn) : NULL;
         if (lv && lv->type != TY_UNKNOWN && !lv->is_cell) {
-          const char *nv = nil_value(lv->type);
+          /* A value-type object local is a C struct (`sp_X lv_x`), so the
+             pointer nil "NULL" that default_value returns for object types
+             does not compile (`lv_x = NULL`). Reset it with the zero compound
+             literal instead, matching its declaration initializer. */
+          char vtbuf[128]; const char *nv = NULL;
+          if (ty_is_object(lv->type)) {
+            int cid = ty_object_class(lv->type);
+            if (cid >= 0 && cid < c->nclasses && c->classes[cid].is_value_type) {
+              snprintf(vtbuf, sizeof vtbuf, "(sp_%s){0}", c->classes[cid].c_name);
+              nv = vtbuf;
+            }
+          }
+          if (!nv) nv = nil_value(lv->type);
           if (!nv) nv = lv->type == TY_RANGE ? "(sp_Range){0}" : default_value(lv->type);
           emit_indent(b, indent);
           buf_printf(b, "lv_%s = %s;\n", rename_local(tmpn), nv);

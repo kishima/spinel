@@ -7328,6 +7328,125 @@ int backprop_hash_return_types(Compiler *c) {
   return changed;
 }
 
+/* ---- call-site value consumption (for the post-backstop no-new-poly gate) --
+
+   The g_ret_no_new_poly gate (#1670 follow-up) keeps a previously-non-poly
+   return at its pre-pass type when the post-backstop re-run would derive a
+   NEW poly, on the theory that such a return is a store-style method whose
+   value no caller reads (optcarrot's poke_* family). But a method whose poly
+   return IS read -- e.g. a helper forwarding a poly ivar, reachable only
+   through poly params the backstop just widened -- then emits as a void C
+   function, and every value-position caller miscompiles (an unsupported puts
+   argument / invalid use of void expression). Distinguish the two cases with
+   a purely syntactic scan: a method is "value-consumed" when some call site
+   bearing its name sits in value position. Statement position (a non-tail
+   element of a StatementsNode body, a loop body, the program tail) is
+   discarded; the tail of a def body inherits the enclosing method's own
+   consumption (fixpoint below); every other position -- an argument, a
+   receiver, an assignment RHS, a condition, a block tail, ... -- counts as
+   consumed. Matching call sites to scopes by bare name over-approximates
+   receiver resolution, which only errs toward adopting the semantically
+   correct poly return. */
+enum { VC_DISCARDED = -1, VC_CONSUMED = -2 };
+static const NodeTable *vc_nt = NULL;
+static int vc_ntc = -1, vc_nscopes = -1;
+static char *vc_consumed = NULL;    /* per scope: a same-named call site is in value position */
+
+/* Position of call node `id`: VC_DISCARDED, VC_CONSUMED, or the scope index
+   of the def whose body tail it is (its consumption decides). */
+static int vc_call_status(Compiler *c, const int *par, int id) {
+  const NodeTable *nt = c->nt;
+  int cur = id;
+  for (;;) {
+    int p = par[cur];
+    if (p < 0) return VC_DISCARDED;              /* program-root statement */
+    switch (nt_kind(nt, p)) {
+      case NK_StatementsNode: {
+        int n = 0; const int *bb = nt_arr(nt, p, "body", &n);
+        if (n > 0 && bb[n - 1] != cur) return VC_DISCARDED;
+        cur = p; break;
+      }
+      case NK_DefNode: {
+        /* cur is the def's body statements: tail position. The walk crossed
+           only statement/branch nodes, so the call's innermost scope is this
+           def's scope. */
+        Scope *sc = comp_scope_of(c, id);
+        int si = sc ? (int)(sc - c->scopes) : -1;
+        return (si >= 0 && si < c->nscopes) ? si : VC_CONSUMED;
+      }
+      case NK_WhileNode: case NK_UntilNode: case NK_ForNode:
+        return nt_ref(nt, p, "statements") == cur ? VC_DISCARDED : VC_CONSUMED;
+      case NK_IfNode: case NK_UnlessNode:
+        if (nt_ref(nt, p, "predicate") == cur) return VC_CONSUMED;
+        cur = p; break;                          /* branch value flows up */
+      case NK_CaseNode: case NK_CaseMatchNode: case NK_InNode:
+      case NK_ElseNode: case NK_BeginNode: case NK_RescueNode:
+      case NK_ParenthesesNode:
+        cur = p; break;                          /* value flows up */
+      default:
+        return VC_CONSUMED;                      /* argument/receiver/RHS/... */
+    }
+  }
+}
+
+static void vc_build(Compiler *c) {
+  const NodeTable *nt = c->nt;
+  int n = nt->count, ns = c->nscopes;
+  free(vc_consumed);
+  vc_consumed = calloc((size_t)(ns > 0 ? ns : 1), 1);
+  vc_nt = nt; vc_ntc = n; vc_nscopes = ns;
+  if (!vc_consumed) return;
+  int *par = malloc((size_t)(n > 0 ? n : 1) * sizeof(int));
+  if (!par) return;
+  for (int i = 0; i < n; i++) par[i] = -1;
+  for (int id = 0; id < n; id++) {
+    int nr = nt_num_refs(nt, id);
+    for (int i = 0; i < nr; i++) {
+      int ch = nt_ref_at(nt, id, i);
+      if (ch >= 0 && ch < n) par[ch] = id;
+    }
+    int na = nt_num_arrs(nt, id);
+    for (int i = 0; i < na; i++) {
+      int cn = 0; const int *ids = nt_arr_at(nt, id, i, &cn);
+      for (int j = 0; j < cn; j++)
+        if (ids[j] >= 0 && ids[j] < n) par[ids[j]] = id;
+    }
+  }
+  int ncalls = 0; const int *calls = nt_nodes_of_kind(nt, NK_CallNode, &ncalls);
+  int *cstat = malloc((size_t)(ncalls > 0 ? ncalls : 1) * sizeof(int));
+  if (!cstat) { free(par); return; }
+  for (int i = 0; i < ncalls; i++) cstat[i] = vc_call_status(c, par, calls[i]);
+  free(par);
+  if (rn_nscopes != ns) rn_build(c);
+  /* Propagate: a consumed call site marks every same-named scope; a def-tail
+     call site becomes consumed once its enclosing method is. Monotonic, so
+     iterate to a fixpoint. */
+  int change = 1;
+  while (change) {
+    change = 0;
+    for (int i = 0; i < ncalls; i++) {
+      int st = cstat[i];
+      if (st == VC_DISCARDED) continue;
+      if (st >= 0 && !(st < ns && vc_consumed[st])) continue;
+      const char *nm = nt_str(nt, calls[i], "name");
+      if (!nm) continue;
+      int use_idx = rn_buckets > 0;
+      int s = use_idx ? rn_head[wrn_hash(nm) % (unsigned)rn_buckets] : 1;
+      for (; use_idx ? (s >= 0) : (s < ns); s = use_idx ? rn_next[s] : s + 1) {
+        if (!c->scopes[s].name || !sp_streq(c->scopes[s].name, nm)) continue;
+        if (!vc_consumed[s]) { vc_consumed[s] = 1; change = 1; }
+      }
+    }
+  }
+  free(cstat);
+}
+
+static int vc_scope_value_consumed(Compiler *c, int s) {
+  if (vc_nt != c->nt || vc_ntc != c->nt->count || vc_nscopes != c->nscopes)
+    vc_build(c);
+  return vc_consumed && s >= 0 && s < vc_nscopes ? vc_consumed[s] : 1;
+}
+
 int infer_return_types(Compiler *c) {
   const NodeTable *nt = c->nt;
   int changed = 0;
@@ -7425,7 +7544,8 @@ int infer_return_types(Compiler *c) {
        method whose value no caller reads -- boxing it puts an sp_RbVal
        return in optcarrot's hottest poke path for ~4% fps. Keep those at
        their pre-pass type; the main fixpoint still widens to poly freely. */
-    if (g_ret_no_new_poly && r == TY_POLY && sc->ret != TY_POLY) continue;
+    if (g_ret_no_new_poly && r == TY_POLY && sc->ret != TY_POLY &&
+        !vc_scope_value_consumed(c, s)) continue;
     /* An element-less-hash body (`{}` / Hash.new) infers TY_UNKNOWN every pass
        (no witnessed element). Once a caller has pinned it to a concrete hash
        (backprop_hash_return_types), don't collapse it back to UNKNOWN -- that
