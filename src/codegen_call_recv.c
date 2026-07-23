@@ -5011,7 +5011,10 @@ int emit_scalar_call(Compiler *c, int id, Buf *b) {
         int lvw = rvt2 && (sp_streq(rvt2, "LocalVariableReadNode") ||
                            sp_streq(rvt2, "InstanceVariableReadNode"));
         int tv2 = ++g_tmp;
-        buf_printf(b, "({ mrb_int _t%d = ", tv2); emit_expr(c, argv[1], b);
+        /* The byte value may be a poly (e.g. read from a symbol-keyed hash,
+           which is always poly-valued); unbox it to mrb_int like getbyte's
+           index does, instead of assigning sp_RbVal into an mrb_int slot. */
+        buf_printf(b, "({ mrb_int _t%d = ", tv2); emit_int_expr(c, argv[1], b);
         buf_puts(b, "; ");
         if (lvw) { emit_expr(c, recv, b); buf_puts(b, " = "); }
         buf_printf(b, "sp_str_setbyte_cow(%s, ", r); emit_expr(c, argv[0], b);
