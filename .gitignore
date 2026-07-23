@@ -22,6 +22,7 @@
 /perf.data.old
 /lib/regexp/libspre.a
 lib/libspinel_rt.a
+lib/libspinel_rt_mc.a
 lib/libspinel_rt_mt.a
 lib/libspinel_rt_mt_tsan.a
 lib/libspbi.a
