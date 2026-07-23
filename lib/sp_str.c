@@ -320,14 +320,13 @@ const char*sp_str_capitalize(const char*s){SP_GC_ROOT_STR(s);if(!s)sp_nil_recv("
 const char*sp_str_repeat(const char*s,mrb_int n){SP_GC_ROOT_STR(s);
   if(n<0) sp_raise_cls("ArgumentError","negative argument");
   if(!s)sp_nil_recv("*");if(n<=0)return sp_str_empty;
-  size_t l=strlen(s);
+  size_t l=sp_str_byte_len(s);   /* stored length: embedded NULs are kept, unlike strlen */
   if(l==0) return sp_str_empty;
   if((size_t)n>SIZE_MAX/l) sp_raise_cls("ArgumentError","string size too big");
   size_t total=(size_t)n*l;
   if(total>(size_t)(1u<<30)) sp_raise_cls("ArgumentError","string size too big");
-  char*r=sp_str_alloc_raw(total+1);
+  char*r=sp_str_alloc(total);    /* sp_str_alloc records the byte length (NUL-safe) */
   for(mrb_int i=0;i<n;i++)memcpy(r+(l*i),s,l);
-  r[total]=0;
   return r;
 }
 /* root `s` before the IntArray_new GC-alloc: the argument is often a fresh
