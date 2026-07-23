@@ -90,6 +90,46 @@ static int bare_rescue_spec_cid(Compiler *c, int rescue_id) {
   return -1;
 }
 
+/* Type every `rescue => e` local as an exception object (TY_EXCEPTION, or the
+   named user-exception subclass when a rescue arm specializes it). Scans every
+   RescueNode in the node table and maps its bound local through comp_scope_of,
+   so it naturally covers both a plain scope and the per-includer deep clones a
+   module method gets under `include` (each clone owns its own RescueNode in the
+   table). Idempotent -- safe to run again after the transplant clones exist so
+   their `e` is typed too, instead of being left poly (which would box a caught
+   sp_Exception* into an sp_RbVal slot and fail to compile). */
+static void specialize_rescue_vars(Compiler *c) {
+  int cap = 0, rn = 0;
+  struct { int id; const char *nm; Scope *vsc; int spec; } *arms = NULL;
+  for (int id = 0; id < c->nt->count; id++) {
+    const char *ty = nt_type(c->nt, id);
+    if (!ty || !sp_streq(ty, "RescueNode")) continue;
+    int ref = nt_ref(c->nt, id, "reference");
+    if (ref < 0 || !nt_type(c->nt, ref) || !sp_streq(nt_type(c->nt, ref), "LocalVariableTargetNode")) continue;
+    const char *nm = nt_str(c->nt, ref, "name");
+    if (!nm) continue;
+    Scope *vsc = comp_scope_of(c, ref);
+    scope_local_intern(vsc, nm);   /* ensure the LocalVar exists for every arm first */
+    if (rn >= cap) { cap = cap ? cap * 2 : 16; arms = realloc(arms, sizeof(*arms) * (size_t)cap); }
+    arms[rn].id = id; arms[rn].nm = nm; arms[rn].vsc = vsc;
+    arms[rn].spec = rescue_arm_spec_cid(c, id);
+    if (arms[rn].spec < 0) arms[rn].spec = bare_rescue_spec_cid(c, id);
+    rn++;
+  }
+  for (int i = 0; i < rn; i++) {
+    /* unanimity across every same-name rescue arm in the same scope */
+    int unanimous = arms[i].spec;
+    for (int j = 0; j < rn && unanimous >= 0; j++) {
+      if (j == i || arms[j].vsc != arms[i].vsc || !sp_streq(arms[j].nm, arms[i].nm)) continue;
+      if (arms[j].spec != arms[i].spec) unanimous = -1;
+    }
+    LocalVar *lv = scope_local_intern(arms[i].vsc, arms[i].nm);
+    lv->type = unanimous >= 0 ? ty_object(unanimous) : TY_EXCEPTION;
+    lv->is_block_param = 1;  /* set externally; don't reset in the fixpoint */
+  }
+  free(arms);
+}
+
 void compute_reachable(Compiler *c) {
   /* Build per-scope call sets (CallNode names, not entering nested DefNodes). */
   char ***scope_calls = calloc((size_t)c->nscopes, sizeof(char **));
@@ -5450,37 +5490,7 @@ void analyze_program(Compiler *c) {
   /* Collect the rescue arms that bind a local (`rescue X => e`) once; the
      unanimity check then compares arms against this small list instead of
      rescanning the whole node table per arm (was O(rescues * nodes)). */
-  {
-    int cap = 0, rn = 0;
-    struct { int id; const char *nm; Scope *vsc; int spec; } *arms = NULL;
-    for (int id = 0; id < c->nt->count; id++) {
-      const char *ty = nt_type(c->nt, id);
-      if (!ty || !sp_streq(ty, "RescueNode")) continue;
-      int ref = nt_ref(c->nt, id, "reference");
-      if (ref < 0 || !nt_type(c->nt, ref) || !sp_streq(nt_type(c->nt, ref), "LocalVariableTargetNode")) continue;
-      const char *nm = nt_str(c->nt, ref, "name");
-      if (!nm) continue;
-      Scope *vsc = comp_scope_of(c, ref);
-      scope_local_intern(vsc, nm);   /* ensure the LocalVar exists for every arm first */
-      if (rn >= cap) { cap = cap ? cap * 2 : 16; arms = realloc(arms, sizeof(*arms) * (size_t)cap); }
-      arms[rn].id = id; arms[rn].nm = nm; arms[rn].vsc = vsc;
-      arms[rn].spec = rescue_arm_spec_cid(c, id);
-      if (arms[rn].spec < 0) arms[rn].spec = bare_rescue_spec_cid(c, id);
-      rn++;
-    }
-    for (int i = 0; i < rn; i++) {
-      /* unanimity across every same-name rescue arm in the same scope */
-      int unanimous = arms[i].spec;
-      for (int j = 0; j < rn && unanimous >= 0; j++) {
-        if (j == i || arms[j].vsc != arms[i].vsc || !sp_streq(arms[j].nm, arms[i].nm)) continue;
-        if (arms[j].spec != arms[i].spec) unanimous = -1;
-      }
-      LocalVar *lv = scope_local_intern(arms[i].vsc, arms[i].nm);
-      lv->type = unanimous >= 0 ? ty_object(unanimous) : TY_EXCEPTION;
-      lv->is_block_param = 1;  /* set externally; don't reset in the fixpoint */
-    }
-    free(arms);
-  }
+  specialize_rescue_vars(c);
 
   resolve_parents(c);
   inherit_members(c);
@@ -6423,6 +6433,12 @@ void analyze_program(Compiler *c) {
       }
     }
   }
+
+  /* Re-run rescue-var specialization now that per-includer transplant clones of
+     module methods exist (they are deep-copied AFTER the first pass above, so
+     their `rescue => e` local was still poly). Idempotent; maps each clone's
+     own RescueNode to the clone scope via comp_scope_of. */
+  specialize_rescue_vars(c);
 
   /* Backstop step 1: a method reached only via method(:sym) is invoked through
      the bound Method ABI, which passes mrb_int args -- default its untyped
