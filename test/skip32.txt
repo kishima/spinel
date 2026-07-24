@@ -19,6 +19,8 @@
 bitwise_mask_over_int64            # [DIV] mask spans the full int64 range
 bundle_integer                     # [DIV] integer literals/results exceed INT32
 bundle_misc_c_36                   # [DIV] integer width
+bignum_receiver_methods            # [DIV] 2**40-class intermediates raise int-pow overflow at INT32
+random_bignum_seed                 # [DIV] rand(2**40) seed exceeds INT32 (raise-mode)
 int_overflow_op_assign             # [DIV] op-assign overflow trips at INT32
 int_overflow_raises                # [DIV] overflow raises at INT32 (raise-mode)
 int_round_large_precision          # [DIV] round of an int wider than INT32
@@ -48,15 +50,15 @@ ffi_write_roundtrip                # [DIV] pointer/long write width differs
 ffi_gem_compat                     # [DIV] test declares `unsigned long strlen`,
                                    #       which != size_t (unsigned int) on ILP32
 
-# ---- [BUG] genuine 32-bit crashes (fork follow-up; see phase5 report) ----
-# All optimization/layout-sensitive (SIGSEGV at -O2, clean under -O0/ASan),
-# confined to the bignum path and variadic FFI -- neither is on the fmruby
-# kernel/desktop critical path, so they do not block the ESP32 bring-up.
-bignum_modulo_bit_pow              # [BUG] SEGV -O2: bignum modulo/pow 32-bit UB
-bignum_recv_int_ord_float_toi      # [BUG] SEGV -O2: bignum digits/to_s 32-bit UB
-bignum_receiver_methods            # [BUG] bignum receiver path diverges/raises
-integer_hash_range_batch9          # [BUG] SEGV -O2: (2**100).digits 32-bit UB
-random_bignum_seed                 # [BUG] bignum RNG seed 32-bit divergence
+# ---- [FIXED] former bignum 32-bit SIGSEGVs, now running in the gate ----
+# One ABI bug: sp_bigint.c compiles with mruby_shim.h (mrb_int = int64_t) while
+# the generated callers use sp_types.h (mrb_int = intptr_t); an mrb_int in a
+# public sp_bigint signature therefore had different widths in the two TUs and
+# args shifted on ILP32. Fixed by pinning those boundary signatures to intptr_t
+# (bignum_modulo_bit_pow / bignum_recv_int_ord_float_toi /
+# integer_hash_range_batch9). These are intentionally NOT listed -- they pass.
+
+# ---- [BUG] genuine 32-bit crash (fork follow-up) ----
 ffi_variadic                       # [BUG] SEGV -O2: variadic FFI arg promotion
 
 # ---- [WATCH] intermittent core under peak parallel memory pressure ----
