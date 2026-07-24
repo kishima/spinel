@@ -9038,7 +9038,7 @@ else { memcpy(dir, sf, n); dir[n] = 0; } }
       emit_indent(g_pre, g_indent);
       buf_printf(g_pre, "const char *_t%d = ", tf);
       Buf fb; memset(&fb, 0, sizeof fb);
-      emit_expr(c, av[0], &fb);
+      emit_str_expr(c, av[0], &fb);
       buf_printf(g_pre, "%s;\n", fb.p ? fb.p : "");
       free(fb.p);
       emit_indent(g_pre, g_indent);
@@ -11904,13 +11904,13 @@ else { memcpy(dir, sf, n); dir[n] = 0; } }
       int int_mode = argc >= 2 && kw_mode < 0 && comp_ntype(c, argv[1]) == TY_INT;
       #define EMIT_FILE_OPEN() do { \
         if (int_mode) { \
-          buf_puts(b, "sp_File_open_flags("); emit_expr(c, argv[0], b); buf_puts(b, ", "); \
+          buf_puts(b, "sp_File_open_flags("); emit_str_expr(c, argv[0], b); buf_puts(b, ", "); \
           emit_int_expr(c, argv[1], b); buf_puts(b, ")"); \
         } \
         else { \
-          buf_puts(b, "sp_File_open("); emit_expr(c, argv[0], b); buf_puts(b, ", "); \
-          if (kw_mode >= 0) emit_expr(c, kw_mode, b); \
-          else if (argc >= 2 && !(nt_type(nt, argv[1]) && sp_streq(nt_type(nt, argv[1]), "KeywordHashNode"))) emit_expr(c, argv[1], b); \
+          buf_puts(b, "sp_File_open("); emit_str_expr(c, argv[0], b); buf_puts(b, ", "); \
+          if (kw_mode >= 0) emit_str_expr(c, kw_mode, b); \
+          else if (argc >= 2 && !(nt_type(nt, argv[1]) && sp_streq(nt_type(nt, argv[1]), "KeywordHashNode"))) emit_str_expr(c, argv[1], b); \
           else buf_puts(b, "\"r\""); \
           buf_puts(b, ")"); \
         } \
