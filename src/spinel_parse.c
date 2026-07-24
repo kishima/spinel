@@ -1751,23 +1751,72 @@ static char **sp_included_paths = NULL;
 static int sp_included_count = 0;
 static int sp_included_cap = 0;
 
-/* Whether `src` references the Set constant (identifier-boundary scan: the
-   char before is not part of an identifier or a `::`/`.` qualifier, the char
-   after doesn't extend the word -- so `Set[`, `Set.new`, `Set(` hit while
-   `Settings`, `OffSet`, `Foo::Set` don't) or calls `.to_set`. Drives the
-   implicit `require "set"` splice below. */
+/* Whether the `Set` token at `p` (which points at "Set") is an identifier-
+   boundary constant reference: the char before is not part of an identifier or
+   a `::`/`.` qualifier, the char after doesn't extend the word -- so `Set[`,
+   `Set.new`, `Set(` hit while `Settings`, `OffSet`, `Foo::Set` don't. */
+static int sp_set_token_at(const char *src, const char *p) {
+  char prev = p == src ? 0 : p[-1];
+  char next = p[3];
+  int prev_ok = prev == 0 ||
+                (!((prev >= 'A' && prev <= 'Z') || (prev >= 'a' && prev <= 'z') ||
+                   (prev >= '0' && prev <= '9') || prev == '_' || prev == ':' || prev == '.'));
+  int next_ok = !((next >= 'A' && next <= 'Z') || (next >= 'a' && next <= 'z') ||
+                  (next >= '0' && next <= '9') || next == '_');
+  return prev_ok && next_ok;
+}
+
+/* Whether `src` references the Set constant (`Set[`, `Set.new`, `Set(`, bare
+   `Set`) or calls `.to_set`. Drives the implicit `require "set"` splice below.
+
+   The scan skips line comments (`# ...`) and string literals so a UI string
+   like "Set Clock" or a `# Set the clock` comment never triggers the splice
+   (which would otherwise compile the bundled set.rb into every such program).
+   `#{...}` interpolation inside a double-quoted string is scanned as code, so a
+   real `"#{Set.new}"` still counts. Heredocs / %-literals / ?c char literals
+   are not modeled; a stray `Set` there over-triggers, matching the previous
+   conservative behaviour. */
 static int source_references_set(const char *src) {
-  for (const char *p = strstr(src, "Set"); p; p = strstr(p + 1, "Set")) {
-    char prev = p == src ? 0 : p[-1];
-    char next = p[3];
-    int prev_ok = prev == 0 ||
-                  (!((prev >= 'A' && prev <= 'Z') || (prev >= 'a' && prev <= 'z') ||
-                     (prev >= '0' && prev <= '9') || prev == '_' || prev == ':' || prev == '.'));
-    int next_ok = !((next >= 'A' && next <= 'Z') || (next >= 'a' && next <= 'z') ||
-                    (next >= '0' && next <= '9') || next == '_');
-    if (prev_ok && next_ok) return 1;
+  const char *p = src;
+  enum { CODE, LINE_COMMENT, SQ_STR, DQ_STR } state = CODE;
+  int interp = 0; /* brace depth inside #{...} within a double-quoted string */
+  while (*p) {
+    char c = *p;
+    switch (state) {
+      case CODE:
+        if (c == '#') { state = LINE_COMMENT; p++; continue; }
+        if (c == '\'') { state = SQ_STR; p++; continue; }
+        if (c == '"') { state = DQ_STR; interp = 0; p++; continue; }
+        if (c == 'S' && p[1] == 'e' && p[2] == 't' && sp_set_token_at(src, p)) return 1;
+        if (c == '.' && strncmp(p, ".to_set", 7) == 0) return 1;
+        p++;
+        continue;
+      case LINE_COMMENT:
+        if (c == '\n') state = CODE;
+        p++;
+        continue;
+      case SQ_STR: /* single quotes: only \\ and \' are escapes */
+        if (c == '\\' && p[1]) { p += 2; continue; }
+        if (c == '\'') state = CODE;
+        p++;
+        continue;
+      case DQ_STR:
+        if (interp > 0) { /* inside #{...}: scan as code, track braces */
+          if (c == '{') { interp++; p++; continue; }
+          if (c == '}') { interp--; p++; continue; }
+          if (c == 'S' && p[1] == 'e' && p[2] == 't' && sp_set_token_at(src, p)) return 1;
+          if (c == '.' && strncmp(p, ".to_set", 7) == 0) return 1;
+          p++;
+          continue;
+        }
+        if (c == '\\' && p[1]) { p += 2; continue; }
+        if (c == '#' && p[1] == '{') { interp = 1; p += 2; continue; }
+        if (c == '"') state = CODE;
+        p++;
+        continue;
+    }
   }
-  return strstr(src, ".to_set") != NULL;
+  return 0;
 }
 
 /* ---- require-gate: features enabled by a `require "name"` ----
