@@ -82,7 +82,14 @@ static int sp_bt_n = 0;
 #include <fcntl.h>
 #include <fnmatch.h>
 #include <sys/file.h>
+/* <sys/mman.h> is consumed only by the fiber stack allocator (lib/sp_fiber.c,
+   a separate TU) via the MAP_ANONYMOUS fallback below. Bare-metal / RTOS ports
+   without an MMU (e.g. ESP-IDF/newlib) have no <sys/mman.h>; such a port defines
+   SP_NO_MMAN and excludes fibers from its build. Hosted platforms leave it
+   undefined, so this include (and the byte-identical output) is preserved. */
+#ifndef SP_NO_MMAN
 #include <sys/mman.h>
+#endif
 #include <sys/wait.h>
 /* malloc_trim is glibc's: the collector (sp_gc.c) returns freed arena pages
    with it after a full cycle, and nowhere else defines it -- not Darwin, not
@@ -95,8 +102,10 @@ static int sp_bt_n = 0;
 #else
 #define malloc_trim(x) ((void)0)
 #endif
+#ifndef SP_NO_MMAN
 #ifndef MAP_ANONYMOUS
 #define MAP_ANONYMOUS MAP_ANON
+#endif
 #endif
 #ifndef S_ISDIR
 #define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
