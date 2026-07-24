@@ -36,7 +36,7 @@ RBS_OBJ      = $(patsubst $(RBS_DIR)/src/%.c,build/rbs/%.o,$(RBS_SRC))
 RBS_LIB      = build/librbs.a
 
 .PHONY: all regexp rbs_extract rbs-test rbs-seed-test rubyspec rubyspec-gate spin-check \
-        test test-run clean-test-results regen-rbs-expected \
+        test test-run test32 clean-test-results regen-rbs-expected \
         regen-expected regen-expected-err bench optcarrot gate check gate-legs gate-test gate-bench \
         gate-optcarrot clean install uninstall deps tools
 
@@ -520,6 +520,15 @@ test:
 .PHONY: test-lib-mode
 test-lib-mode: $(SPINEL) $(SP_RT_LIB)
 	@SPINEL=$(SPINEL) ./test/lib_mode/smoke.sh
+
+# 32-bit (ILP32) gate: rebuild the runtime and every generated test TU at -m32
+# and run the full suite. A portable proxy for the 32-bit Xtensa/ESP32 target
+# that catches width-dependent regressions (mrb_int, pointer/size_t truncation,
+# __int128 fallbacks) without a cross toolchain. Isolated: builds into build/m32/
+# and never touches the 64-bit archive `make test` uses. Requires gcc-multilib.
+.PHONY: test32
+test32: $(SPINEL)
+	@SPINEL=$(SPINEL) CC="$(CC)" ./scripts/test32.sh
 
 # Multi-instance runtime smoke test (-DSP_MULTI_CTX). Builds the on-demand MC
 # archive, then runs a single-instance and an N-thread concurrent program plus
