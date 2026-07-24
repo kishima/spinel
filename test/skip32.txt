@@ -50,16 +50,17 @@ ffi_write_roundtrip                # [DIV] pointer/long write width differs
 ffi_gem_compat                     # [DIV] test declares `unsigned long strlen`,
                                    #       which != size_t (unsigned int) on ILP32
 
-# ---- [FIXED] former bignum 32-bit SIGSEGVs, now running in the gate ----
-# One ABI bug: sp_bigint.c compiles with mruby_shim.h (mrb_int = int64_t) while
-# the generated callers use sp_types.h (mrb_int = intptr_t); an mrb_int in a
-# public sp_bigint signature therefore had different widths in the two TUs and
-# args shifted on ILP32. Fixed by pinning those boundary signatures to intptr_t
-# (bignum_modulo_bit_pow / bignum_recv_int_ord_float_toi /
-# integer_hash_range_batch9). These are intentionally NOT listed -- they pass.
-
-# ---- [BUG] genuine 32-bit crash (fork follow-up) ----
-ffi_variadic                       # [BUG] SEGV -O2: variadic FFI arg promotion
+# ---- [FIXED] former 32-bit SIGSEGVs, now running in the gate ----
+# Two independent bugs, both invisible on LP64 and fatal on ILP32:
+#  - bignum (bignum_modulo_bit_pow / bignum_recv_int_ord_float_toi /
+#    integer_hash_range_batch9): an mrb_int in a public sp_bigint signature had
+#    different widths in sp_bigint.c (int64_t, via mruby_shim.h) and the
+#    generated caller (intptr_t, via sp_types.h). Fixed by pinning those
+#    boundaries to intptr_t.
+#  - ffi_variadic: integer varargs were force-widened to `long long`, so an
+#    8-byte slot met a `%d` (int) conversion and shifted every later arg by 4
+#    bytes on ILP32. Fixed by passing them as their natural mrb_int.
+# All are intentionally NOT listed here -- they must pass at -m32.
 
 # ---- [WATCH] intermittent core under peak parallel memory pressure ----
 # The "#2842 ENV snapshot GC safety" test allocates 300 env entries + churns GC.

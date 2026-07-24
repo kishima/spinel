@@ -12456,15 +12456,26 @@ else { memcpy(dir, sf, n); dir[n] = 0; } }
           }
           if (voidp) buf_puts(&call_buf, ")");
         }
-        /* Extra variadic args: promote by inferred type (int->long long,
-           float->double, str->const char*, ptr->void*). A poly-typed vararg
-           has no compile-time C type to promote to, so reject it loudly. */
+        /* Extra variadic args: promote by inferred type following C's default
+           argument promotions -- an integer keeps its own width (int stays int;
+           it does NOT widen to long long), float->double, str->const char*.
+           A poly-typed vararg has no compile-time C type to promote to, so
+           reject it loudly.
+
+           An integer arg is passed as its natural mrb_int, which is what the
+           value already is. Forcing (long long) here misaligned the vararg on an
+           ILP32 target: an 8-byte slot against a `%d` (int) conversion shifted
+           every following arg by 4 bytes (a live SIGSEGV once a later `%s` read
+           an integer as a pointer). mrb_int == long long on LP64, so 64-bit
+           output is byte-identical; on ILP32 it becomes a 4-byte `int`, matching
+           `%d`. (A caller wanting 64-bit width uses an explicit int64 arg, which
+           is TY_BIGINT-or-wider, not TY_INT.) */
         if (is_vararg) {
           for (int ai = fixed_argc; ai < argc; ai++) {
             if (ai) buf_puts(&call_buf, ", ");
             TyKind at = comp_ntype(c, argv[ai]);
             if (at == TY_INT || at == TY_BOOL) {
-              buf_puts(&call_buf, "((long long)("); emit_int_expr(c, argv[ai], &call_buf); buf_puts(&call_buf, "))");
+              buf_puts(&call_buf, "((mrb_int)("); emit_int_expr(c, argv[ai], &call_buf); buf_puts(&call_buf, "))");
             }
             else if (at == TY_FLOAT) {
               buf_puts(&call_buf, "((double)("); emit_expr(c, argv[ai], &call_buf); buf_puts(&call_buf, "))");
