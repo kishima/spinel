@@ -3123,7 +3123,16 @@ static int emit_poly_method_dispatch(Compiler *c, int id, Buf *b) {
                       sp_streq(name, "center")) &&
                      (infer_type(c, argv[0]) == TY_INT || infer_type(c, argv[0]) == TY_POLY) &&
                      (argc == 1 || infer_type(c, argv[1]) == TY_STRING);
-    if (ncand > 0 || is_index || is_include || is_fetch || is_push || is_pred || is_strftime || is_strjust) {
+    /* byteslice(start, len) on a poly value that is really a String: a string
+       held in a poly slot (sym-hash value, or a method param widened to poly by
+       a poly-passing caller) answers byteslice. Give the dispatch a SP_TAG_STR
+       pre-arm routing to sp_str_byteslice; anything else raises NoMethodError,
+       matching CRuby. Only when no user class defines the name (same shape as
+       is_strjust). Mirrors sp_poly_bytesize, which poly already answers. */
+    int is_strbyteslice = ncand == 0 && sp_streq(name, "byteslice") && argc == 2 &&
+                          (infer_type(c, argv[0]) == TY_INT || infer_type(c, argv[0]) == TY_POLY) &&
+                          (infer_type(c, argv[1]) == TY_INT || infer_type(c, argv[1]) == TY_POLY);
+    if (ncand > 0 || is_index || is_include || is_fetch || is_push || is_pred || is_strftime || is_strjust || is_strbyteslice) {
       TyKind ret = comp_ntype(c, id);
       int tv = ++g_tmp, tr = ++g_tmp;
       int *atmp = malloc(sizeof(int) * argc);
@@ -3184,6 +3193,20 @@ static int emit_poly_method_dispatch(Compiler *c, int id, Buf *b) {
         buf_printf(b, "if (_t%d.tag == SP_TAG_STR) { _t%d = ", tv, tr);
         if (ret == TY_POLY) buf_printf(b, "sp_box_str(%s)", jcall);
         else buf_puts(b, jcall);
+        buf_puts(b, "; } else ");
+      }
+      /* byteslice(start, len) on a TAG_STR receiver: slice via the string
+         runtime, boxed when the dispatch result stays poly. Either arg may have
+         widened to poly (promote mode); unbox it at the use. */
+      if (is_strbyteslice && (ret == TY_POLY || ret == TY_STRING)) {
+        char sref[64], lref[64];
+        if (atmp_ty[0] == TY_POLY) snprintf(sref, sizeof sref, "sp_poly_to_i(_t%d)", atmp[0]);
+        else snprintf(sref, sizeof sref, "_t%d", atmp[0]);
+        if (atmp_ty[1] == TY_POLY) snprintf(lref, sizeof lref, "sp_poly_to_i(_t%d)", atmp[1]);
+        else snprintf(lref, sizeof lref, "_t%d", atmp[1]);
+        buf_printf(b, "if (_t%d.tag == SP_TAG_STR) { _t%d = ", tv, tr);
+        if (ret == TY_POLY) buf_printf(b, "sp_box_str(sp_str_byteslice(_t%d.v.s, %s, %s))", tv, sref, lref);
+        else buf_printf(b, "sp_str_byteslice(_t%d.v.s, %s, %s)", tv, sref, lref);
         buf_puts(b, "; } else ");
       }
       /* The builtin index/bit-ref arms use the index as a raw mrb_int; unbox it
