@@ -48,16 +48,16 @@ ffi_write_roundtrip                # [DIV] pointer/long write width differs
 ffi_gem_compat                     # [DIV] test declares `unsigned long strlen`,
                                    #       which != size_t (unsigned int) on ILP32
 
-# ---- [BUG] genuine 32-bit crashes (fork follow-up; see phase5 report) ----
-# All optimization/layout-sensitive (SIGSEGV at -O2, clean under -O0/ASan),
-# confined to the bignum path and variadic FFI -- neither is on the fmruby
-# kernel/desktop critical path, so they do not block the ESP32 bring-up.
-bignum_modulo_bit_pow              # [BUG] SEGV -O2: bignum modulo/pow 32-bit UB
-bignum_recv_int_ord_float_toi      # [BUG] SEGV -O2: bignum digits/to_s 32-bit UB
-bignum_receiver_methods            # [BUG] bignum receiver path diverges/raises
-integer_hash_range_batch9          # [BUG] SEGV -O2: (2**100).digits 32-bit UB
-random_bignum_seed                 # [BUG] bignum RNG seed 32-bit divergence
-ffi_variadic                       # [BUG] SEGV -O2: variadic FFI arg promotion
+# ---- [FIXED] former 32-bit SIGSEGVs, now running in the gate ----
+# Two independent bugs, both invisible on LP64 and fatal on ILP32:
+#  - bignum (bignum_modulo_bit_pow / bignum_recv_int_ord_float_toi /
+#    integer_hash_range_batch9): an integer in a public sp_bigint signature had
+#    different widths in sp_bigint.c and the generated caller. Fixed upstream
+#    (6ffca36a) by pinning those boundaries to intptr_t.
+#  - ffi_variadic: integer varargs were force-widened to `long long`, so an
+#    8-byte slot met a `%d` (int) conversion and shifted every later arg by 4
+#    bytes on ILP32. Fixed by passing them as their natural sp_int.
+# All are intentionally NOT listed here -- they must pass at -m32.
 
 # ---- [WATCH] intermittent core under peak parallel memory pressure ----
 # The "#2842 ENV snapshot GC safety" test allocates 300 env entries + churns GC.

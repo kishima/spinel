@@ -1,7 +1,7 @@
-# spinel: int64 -- assumes a 64-bit Integer (values or arithmetic past 2^31); not run on a 32-bit target
 # Variadic FFI: a trailing :varargs spec makes the extern variadic (`...`) and
-# passes each extra actual arg with C default promotions (int->long long,
-# float->double, str->const char*). printf's signature (const char *, ...)
+# passes each extra actual arg with C default promotions (an integer at its
+# own sp_int width, float->double, str->const char*). Runs on a 32-bit target
+# too: a `%d` there reads a 4-byte int. printf's signature (const char *, ...)
 # matches libc, so its extern doesn't conflict. This DSL is not valid CRuby,
 # so the .expected is authored against the deterministic libc behavior.
 module C
