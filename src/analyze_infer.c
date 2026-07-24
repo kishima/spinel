@@ -1459,6 +1459,28 @@ TyKind infer_call(Compiler *c, int id) {
     if (ncand == 0) return TY_STRING;
   }
 
+  /* index/rindex/start_with?/end_with?/split(sep) on a poly value that is really
+     a String: same poly-String gap as byteslice. Return the concrete-String
+     result type (index/rindex -> nullable Int, with_? -> Bool, split -> String
+     array) so the codegen SP_TAG_STR arm's result is typed; a non-String at
+     runtime still raises NoMethodError. Only when no user class supplies the
+     name (matching the codegen guard). */
+  if (recv >= 0 && rt == TY_POLY && argc == 1 && infer_type(c, argv[0]) == TY_STRING &&
+      (sp_streq(name, "index") || sp_streq(name, "rindex") ||
+       sp_streq(name, "start_with?") || sp_streq(name, "end_with?") ||
+       sp_streq(name, "split"))) {
+    int ncand = 0;
+    for (int k = 0; k < c->nclasses; k++) {
+      int mi = comp_method_in_chain(c, k, name, NULL);
+      if (mi >= 0 && argc >= c->scopes[mi].nrequired) ncand++;
+    }
+    if (ncand == 0) {
+      if (sp_streq(name, "split")) return TY_STR_ARRAY;
+      if (sp_streq(name, "start_with?") || sp_streq(name, "end_with?")) return TY_BOOL;
+      return TY_INT;  /* index / rindex: byte offset or nil */
+    }
+  }
+
   /* proc {} / lambda {} / Proc.new {} -> a first-class Proc value */
   if (is_proc_literal(c, id)) return TY_PROC;
 

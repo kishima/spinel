@@ -3132,7 +3132,19 @@ static int emit_poly_method_dispatch(Compiler *c, int id, Buf *b) {
     int is_strbyteslice = ncand == 0 && sp_streq(name, "byteslice") && argc == 2 &&
                           (infer_type(c, argv[0]) == TY_INT || infer_type(c, argv[0]) == TY_POLY) &&
                           (infer_type(c, argv[1]) == TY_INT || infer_type(c, argv[1]) == TY_POLY);
-    if (ncand > 0 || is_index || is_include || is_fetch || is_push || is_pred || is_strftime || is_strjust || is_strbyteslice) {
+    /* index/rindex/start_with?/end_with?/split(sep) on a poly value that is
+       really a String: same poly-String method gap as byteslice/ljust. A String
+       held in a poly slot (sym-hash value, poly-widened param) answers them, but
+       without a SP_TAG_STR pre-arm the call lowers to the unresolved raise even
+       though concrete String static-dispatches all of them. argc==1 with a
+       String arg, and only when no user class defines the name. */
+    int is_strindex = ncand == 0 && (sp_streq(name, "index") || sp_streq(name, "rindex")) &&
+                      argc == 1 && infer_type(c, argv[0]) == TY_STRING;
+    int is_strwith  = ncand == 0 && (sp_streq(name, "start_with?") || sp_streq(name, "end_with?")) &&
+                      argc == 1 && infer_type(c, argv[0]) == TY_STRING;
+    int is_strsplit = ncand == 0 && sp_streq(name, "split") && argc == 1 &&
+                      infer_type(c, argv[0]) == TY_STRING;
+    if (ncand > 0 || is_index || is_include || is_fetch || is_push || is_pred || is_strftime || is_strjust || is_strbyteslice || is_strindex || is_strwith || is_strsplit) {
       TyKind ret = comp_ntype(c, id);
       int tv = ++g_tmp, tr = ++g_tmp;
       int *atmp = malloc(sizeof(int) * argc);
@@ -3207,6 +3219,40 @@ static int emit_poly_method_dispatch(Compiler *c, int id, Buf *b) {
         buf_printf(b, "if (_t%d.tag == SP_TAG_STR) { _t%d = ", tv, tr);
         if (ret == TY_POLY) buf_printf(b, "sp_box_str(sp_str_byteslice(_t%d.v.s, %s, %s))", tv, sref, lref);
         else buf_printf(b, "sp_str_byteslice(_t%d.v.s, %s, %s)", tv, sref, lref);
+        buf_puts(b, "; } else ");
+      }
+      /* index/rindex(sub) on a TAG_STR receiver: byte offset or nil. The runtime
+         has a boxed (_poly) and a nullable-int (_opt, SP_INT_NIL sentinel) form. */
+      if (is_strindex && (ret == TY_POLY || ret == TY_INT)) {
+        char aref[64];
+        if (atmp_ty[0] == TY_POLY) snprintf(aref, sizeof aref, "sp_poly_to_s(_t%d)", atmp[0]);
+        else snprintf(aref, sizeof aref, "_t%d", atmp[0]);
+        const char *fn = sp_streq(name, "rindex") ? "rindex" : "index";
+        buf_printf(b, "if (_t%d.tag == SP_TAG_STR) { _t%d = ", tv, tr);
+        if (ret == TY_POLY) buf_printf(b, "sp_str_%s_poly(_t%d.v.s, %s)", fn, tv, aref);
+        else buf_printf(b, "sp_str_%s_opt(_t%d.v.s, %s)", fn, tv, aref);
+        buf_puts(b, "; } else ");
+      }
+      /* start_with?/end_with?(prefix) on a TAG_STR receiver: bool. */
+      if (is_strwith && (ret == TY_POLY || ret == TY_BOOL)) {
+        char aref[64];
+        if (atmp_ty[0] == TY_POLY) snprintf(aref, sizeof aref, "sp_poly_to_s(_t%d)", atmp[0]);
+        else snprintf(aref, sizeof aref, "_t%d", atmp[0]);
+        const char *fn = sp_streq(name, "start_with?") ? "sp_str_start_with" : "sp_str_end_with";
+        buf_printf(b, "if (_t%d.tag == SP_TAG_STR) { _t%d = ", tv, tr);
+        if (ret == TY_POLY) buf_printf(b, "sp_box_bool(%s(_t%d.v.s, %s))", fn, tv, aref);
+        else buf_printf(b, "%s(_t%d.v.s, %s)", fn, tv, aref);
+        buf_puts(b, "; } else ");
+      }
+      /* split(sep) on a TAG_STR receiver: a String array (trailing empties
+         dropped, matching CRuby's 1-arg split). */
+      if (is_strsplit && (ret == TY_POLY || ret == TY_STR_ARRAY)) {
+        char aref[64];
+        if (atmp_ty[0] == TY_POLY) snprintf(aref, sizeof aref, "sp_poly_to_s(_t%d)", atmp[0]);
+        else snprintf(aref, sizeof aref, "_t%d", atmp[0]);
+        buf_printf(b, "if (_t%d.tag == SP_TAG_STR) { _t%d = ", tv, tr);
+        if (ret == TY_POLY) buf_printf(b, "sp_box_str_array(sp_str_split_drop_trailing(_t%d.v.s, %s))", tv, aref);
+        else buf_printf(b, "sp_str_split_drop_trailing(_t%d.v.s, %s)", tv, aref);
         buf_puts(b, "; } else ");
       }
       /* The builtin index/bit-ref arms use the index as a raw mrb_int; unbox it
