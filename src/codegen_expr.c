@@ -2231,7 +2231,7 @@ static void emit_expr_node(Compiler *c, int id, Buf *b) {
     char gref[256]; snprintf(gref, sizeof gref, "gv_%s", rn);
     if (lv->type == TY_STRING && op && sp_streq(op, "+")) {
       buf_printf(b, "(gv_%s = sp_str_concat(gv_%s, ", rn, rn);
-      emit_expr(c, v, b); buf_puts(b, "))");
+      emit_str_expr(c, v, b); buf_puts(b, "))");
     }
     else if (emit_array_op_assign_value(c, gref, lv->type, op, v, b)) { }
     else if (emit_scalar_op_assign_value(c, gref, lv->type, op, v, b)) { }
@@ -2255,7 +2255,7 @@ static void emit_expr_node(Compiler *c, int id, Buf *b) {
     char ref[300]; snprintf(ref, sizeof ref, "cvar_%s_%s", c->classes[cid].name, nm + 2);
     if (ct == TY_STRING && op && sp_streq(op, "+")) {
       buf_printf(b, "(%s = sp_str_plus(%s, ", ref, ref);
-      emit_expr(c, v, b); buf_puts(b, "))");
+      emit_str_expr(c, v, b); buf_puts(b, "))");
     }
     else if (emit_array_op_assign_value(c, ref, ct, op, v, b)) { }
     else if (ct == TY_POLY) {

@@ -8090,7 +8090,7 @@ else {
     emit_indent(b, indent);
     if (ct == TY_STRING && op && sp_streq(op, "+")) {
       buf_printf(b, "%s = sp_str_concat(%s, ", ref, ref);
-      emit_expr(c, v, b); buf_puts(b, ");\n");
+      emit_str_expr(c, v, b); buf_puts(b, ");\n");
     }
     else if (emit_array_op_assign(c, ref, ct, op, v, b)) { }
     else if (ct == TY_POLY) {
@@ -8187,7 +8187,7 @@ else {
     }
     else if (vt == TY_STRING && op && sp_streq(op, "+")) {
       buf_printf(b, "%s = sp_str_concat(%s, ", ref, ref);
-      emit_expr(c, nt_ref(nt, id, "value"), b); buf_puts(b, ");\n");
+      emit_str_expr(c, nt_ref(nt, id, "value"), b); buf_puts(b, ");\n");
     }
     else if (op && sp_streq(op, "+") && ty_is_array(vt)) {
       /* `@arr += other` = `@arr = @arr + other` (#3289), mirroring the
@@ -8827,7 +8827,7 @@ else {
     int v = nt_ref(nt, id, "value");
     emit_indent(b, indent);
     if (cv->type == TY_STRING && op && sp_streq(op, "+")) {
-      buf_printf(b, "cst_%s = sp_str_concat(cst_%s, ", nm, nm); emit_expr(c, v, b); buf_puts(b, ");\n");
+      buf_printf(b, "cst_%s = sp_str_concat(cst_%s, ", nm, nm); emit_str_expr(c, v, b); buf_puts(b, ");\n");
     }
     else {
       buf_printf(b, "cst_%s %s= ", nm, op ? op : "+"); emit_expr(c, v, b); buf_puts(b, ";\n");
@@ -8865,7 +8865,7 @@ else {
     int v = nt_ref(nt, id, "value");
     emit_indent(b, indent);
     if (cv->type == TY_STRING && op && sp_streq(op, "+")) {
-      buf_printf(b, "cst_%s = sp_str_concat(cst_%s, ", nm, nm); emit_expr(c, v, b); buf_puts(b, ");\n");
+      buf_printf(b, "cst_%s = sp_str_concat(cst_%s, ", nm, nm); emit_str_expr(c, v, b); buf_puts(b, ");\n");
     }
     else {
       buf_printf(b, "cst_%s %s= ", nm, op ? op : "+"); emit_expr(c, v, b); buf_puts(b, ";\n");
@@ -8905,7 +8905,7 @@ else {
     char gref[256]; snprintf(gref, sizeof gref, "gv_%s", rn);
     if (lv->type == TY_STRING && op && sp_streq(op, "+")) {
       buf_printf(b, "gv_%s = sp_str_concat(gv_%s, ", rn, rn);
-      emit_expr(c, v, b); buf_puts(b, ");\n");
+      emit_str_expr(c, v, b); buf_puts(b, ");\n");
     }
     else if (emit_array_op_assign(c, gref, lv->type, op, v, b)) { }
     else if (emit_scalar_op_assign(c, gref, lv->type, op, v, 1, b)) { }
