@@ -1307,7 +1307,7 @@ void emit_expr(Compiler *c, int id, Buf *b) {
     int v = nt_ref(nt, id, "value");
     if (lv->type == TY_STRING && op && sp_streq(op, "+")) {
       buf_printf(b, "(gv_%s = sp_str_concat(gv_%s, ", rn, rn);
-      emit_expr(c, v, b); buf_puts(b, "))");
+      emit_str_expr(c, v, b); buf_puts(b, "))");
     }
     else {
       buf_printf(b, "(gv_%s %s= ", rn, op ? op : "+");
@@ -1329,7 +1329,7 @@ void emit_expr(Compiler *c, int id, Buf *b) {
     char ref[300]; snprintf(ref, sizeof ref, "cvar_%s_%s", c->classes[cid].name, nm + 2);
     if (ct == TY_STRING && op && sp_streq(op, "+")) {
       buf_printf(b, "(%s = sp_str_plus(%s, ", ref, ref);
-      emit_expr(c, v, b); buf_puts(b, "))");
+      emit_str_expr(c, v, b); buf_puts(b, "))");
     }
     else if (ct == TY_POLY) {
       const char *pfn = sp_streq(op ? op : "+", "+") ? "sp_poly_add"

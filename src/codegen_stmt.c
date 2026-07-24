@@ -1017,7 +1017,7 @@ void emit_op_assign(Compiler *c, int id, Buf *b, int indent) {
 
   if (t == TY_STRING && sp_streq(op, "+")) {
     buf_printf(b, "lv_%s = sp_str_concat(lv_%s, ", en, en);
-    emit_expr(c, v, b); buf_puts(b, ");\n");
+    emit_str_expr(c, v, b); buf_puts(b, ");\n");
     return;
   }
   /* Int op-assign routes through the same overflow-checked helpers as the
@@ -5513,7 +5513,7 @@ else {
     emit_indent(b, indent);
     if (ct == TY_STRING && op && sp_streq(op, "+")) {
       buf_printf(b, "%s = sp_str_concat(%s, ", ref, ref);
-      emit_expr(c, v, b); buf_puts(b, ");\n");
+      emit_str_expr(c, v, b); buf_puts(b, ");\n");
     }
     else if (ct == TY_POLY) {
       /* a widened cvar op-assign routes through the tag-dispatching sp_poly_<op>
@@ -5585,7 +5585,7 @@ else {
     emit_indent(b, indent);
     if (vt == TY_STRING && op && sp_streq(op, "+")) {
       buf_printf(b, "%s = sp_str_concat(%s, ", ref, ref);
-      emit_expr(c, nt_ref(nt, id, "value"), b); buf_puts(b, ");\n");
+      emit_str_expr(c, nt_ref(nt, id, "value"), b); buf_puts(b, ");\n");
     }
     else if (op && ty_is_object(vt)) {
       int idefcls = -1;
@@ -5980,7 +5980,7 @@ else {
     int v = nt_ref(nt, id, "value");
     emit_indent(b, indent);
     if (cv->type == TY_STRING && op && sp_streq(op, "+")) {
-      buf_printf(b, "cst_%s = sp_str_concat(cst_%s, ", nm, nm); emit_expr(c, v, b); buf_puts(b, ");\n");
+      buf_printf(b, "cst_%s = sp_str_concat(cst_%s, ", nm, nm); emit_str_expr(c, v, b); buf_puts(b, ");\n");
     }
     else {
       buf_printf(b, "cst_%s %s= ", nm, op ? op : "+"); emit_expr(c, v, b); buf_puts(b, ";\n");
@@ -6018,7 +6018,7 @@ else {
     int v = nt_ref(nt, id, "value");
     emit_indent(b, indent);
     if (cv->type == TY_STRING && op && sp_streq(op, "+")) {
-      buf_printf(b, "cst_%s = sp_str_concat(cst_%s, ", nm, nm); emit_expr(c, v, b); buf_puts(b, ");\n");
+      buf_printf(b, "cst_%s = sp_str_concat(cst_%s, ", nm, nm); emit_str_expr(c, v, b); buf_puts(b, ");\n");
     }
     else {
       buf_printf(b, "cst_%s %s= ", nm, op ? op : "+"); emit_expr(c, v, b); buf_puts(b, ";\n");
@@ -6057,7 +6057,7 @@ else {
     emit_indent(b, indent);
     if (lv->type == TY_STRING && op && sp_streq(op, "+")) {
       buf_printf(b, "gv_%s = sp_str_concat(gv_%s, ", rn, rn);
-      emit_expr(c, v, b); buf_puts(b, ");\n");
+      emit_str_expr(c, v, b); buf_puts(b, ");\n");
     }
     else {
       buf_printf(b, "gv_%s %s= ", rn, op ? op : "+");
