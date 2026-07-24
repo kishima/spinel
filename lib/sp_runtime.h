@@ -50,7 +50,14 @@ static int sp_bt_n = 0;
 #include <fcntl.h>
 #include <fnmatch.h>
 #include <sys/file.h>
+/* <sys/mman.h> is consumed only by the fiber stack allocator (lib/sp_fiber.c,
+   a separate TU) via the MAP_ANONYMOUS fallback below. Bare-metal / RTOS ports
+   without an MMU (e.g. ESP-IDF/newlib) have no <sys/mman.h>; such a port defines
+   SP_NO_MMAN and excludes fibers from its build. Hosted platforms leave it
+   undefined, so this include (and the byte-identical output) is preserved. */
+#ifndef SP_NO_MMAN
 #include <sys/mman.h>
+#endif
 #include <sys/wait.h>
 #if !defined(__APPLE__) && !defined(__FreeBSD__) && !defined(SP_MULTI_CTX)
 #include <malloc.h>
@@ -60,8 +67,10 @@ static int sp_bt_n = 0;
    backend; see lib/sp_mem_override.h). */
 #define malloc_trim(x) ((void)0)
 #endif
+#ifndef SP_NO_MMAN
 #ifndef MAP_ANONYMOUS
 #define MAP_ANONYMOUS MAP_ANON
+#endif
 #endif
 #ifndef S_ISDIR
 #define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
@@ -3993,7 +4002,11 @@ static sp_PolyArray *sp_PolyArray_flatten_n(sp_PolyArray *a, mrb_int depth) {
   sp_PolyArray *b = sp_PolyArray_new();
   SP_GC_ROOT(b);
   if (!a) return b;
-  if (depth < 0) depth = INT64_MAX;
+  /* A negative depth means "flatten fully". Saturate to the largest mrb_int so
+     the countdown never reaches 0 for any real nesting. INT64_MAX would narrow
+     to -1 on a 32-bit mrb_int (intptr_t); INTPTR_MAX is the type's own max on
+     both widths. */
+  if (depth < 0) depth = INTPTR_MAX;
   for (mrb_int i = 0; i < a->len; i++) sp_PolyArray_flatten_into_n(b, a->data[i], depth);
   return b;
 }
