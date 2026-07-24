@@ -24,7 +24,14 @@
 #include <string.h>
 #include <unistd.h>   /* pipe, isatty */
 #include <sys/stat.h> /* stat() for the File predicates */
-#include <sys/ioctl.h> /* TIOCGWINSZ for #winsize */
+/* <sys/ioctl.h> (TIOCGWINSZ for #winsize) is absent on bare-metal / RTOS newlib
+   (ESP-IDF); auto-detect it so those targets report a 0x0 winsize (no tty). */
+#if defined(__has_include) && __has_include(<sys/ioctl.h>)
+#  include <sys/ioctl.h>
+#  define SP_HAVE_IOCTL 1
+#else
+#  define SP_HAVE_IOCTL 0
+#endif
 #include <sys/socket.h> /* the Socket:: constants */
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -441,8 +448,10 @@ sp_int sp_File_fileno(sp_File *f) {
 sp_IntArray *sp_File_winsize(sp_File *f) {
   SP_IO_OPEN(f);
   sp_int rows = 0, cols = 0;
+#if SP_HAVE_IOCTL
   struct winsize ws;
   if (ioctl(fileno(f->fp), TIOCGWINSZ, &ws) == 0) { rows = ws.ws_row; cols = ws.ws_col; }
+#endif
   sp_IntArray *a = sp_IntArray_new();
   sp_IntArray_push(a, rows);
   sp_IntArray_push(a, cols);

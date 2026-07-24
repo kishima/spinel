@@ -26,6 +26,13 @@
 #include <sys/types.h>
 #include <sys/resource.h>   /* getpriority for Process.getpriority */
 #include <fcntl.h>      /* AT_FDCWD for statx */
+/* Bare-metal / RTOS newlib (ESP-IDF; see SP_NO_MMAN in sp_runtime.h) has no
+   symbolic links and does not declare lstat(2). Dir.glob uses lstat only to
+   avoid descending through a symlink; with no symlinks, plain stat is the
+   correct and equivalent call. */
+#if defined(SP_NO_MMAN) && !defined(lstat)
+#define lstat stat
+#endif
 #include <errno.h>
 #include "sp_time.h"   /* sp_Time for File.mtime */
 #include "sp_io.h"     /* sp_file_directory prototype */
