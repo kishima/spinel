@@ -24767,13 +24767,17 @@ else { memcpy(dir, sf, n); dir[n] = 0; } }
     if ((sp_streq(name, "format") || sp_streq(name, "sprintf")) && ac >= 1) {
       /* format(fmt, *args) -> sp_str_format_polyarr(fmt, poly_arr) */
       int tf = ++g_tmp, ta = ++g_tmp;
-      emit_indent(g_pre, g_indent);
-      buf_printf(g_pre, "const char *_t%d = ", tf);
+      /* Emit the format into a local buffer BEFORE opening the `const char *_t =`
+         line: a poly format that is a call rooting its operands pushes those GC
+         decls to g_pre, which must land as whole statements ahead of this
+         assignment, not spliced into its initializer (the same ordering the
+         args below rely on, #1498 / #1508). */
       Buf fb; memset(&fb, 0, sizeof fb);
       emit_str_expr(c, av[0], &fb);
+      emit_indent(g_pre, g_indent);
       /* rooted too: a #to_str's answer lives on the heap, and every arg
          below boxes */
-      buf_printf(g_pre, "%s; SP_GC_ROOT_STR(_t%d);\n", fb.p ? fb.p : "", tf);
+      buf_printf(g_pre, "const char *_t%d = %s; SP_GC_ROOT_STR(_t%d);\n", tf, fb.p ? fb.p : "", tf);
       free(fb.p);
       emit_indent(g_pre, g_indent);
       /* Rooted: every arg below boxes, and a box allocates. */
