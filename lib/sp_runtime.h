@@ -36,9 +36,20 @@
    stack at raise time and Exception#backtrace / caller format it into a
    Ruby-style backtrace — no per-method shadow frames needed. Off unless the
    generated main() sets sp_bt_enabled (debug builds), so non-debug behaviour
-   and cost are unchanged. execinfo is POSIX-ish; absent on Windows. */
-#include <execinfo.h>
-#define SP_BT_AVAILABLE 1
+   and cost are unchanged. execinfo is POSIX-ish; absent on Windows and on
+   bare-metal / RTOS newlib (ESP-IDF). Auto-detect it with __has_include so those
+   targets compile the backtrace helpers out (SP_BT_AVAILABLE 0) with no port
+   flag; where the header exists SP_BT_AVAILABLE stays 1 and output is
+   byte-identical. */
+#if defined(__has_include)
+#  if __has_include(<execinfo.h>)
+#    include <execinfo.h>
+#    define SP_BT_AVAILABLE 1
+#  endif
+#endif
+#ifndef SP_BT_AVAILABLE
+#define SP_BT_AVAILABLE 0
+#endif
 extern int sp_bt_enabled;          /* set to 1 by debug-build main(); defined in lib/sp_cold.c */
 extern const char *sp_bt_srcfile;  /* toplevel .rb path, set by debug main() */
 #if SP_BT_AVAILABLE
