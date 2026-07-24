@@ -3144,7 +3144,13 @@ static int emit_poly_method_dispatch(Compiler *c, int id, Buf *b) {
                       argc == 1 && infer_type(c, argv[0]) == TY_STRING;
     int is_strsplit = ncand == 0 && sp_streq(name, "split") && argc == 1 &&
                       infer_type(c, argv[0]) == TY_STRING;
-    if (ncand > 0 || is_index || is_include || is_fetch || is_push || is_pred || is_strftime || is_strjust || is_strbyteslice || is_strindex || is_strwith || is_strsplit) {
+    /* index/find_index(x) on a poly value that is really an Array: first index
+       of x by ==, or nil (String#index is handled by is_strindex's TAG_STR
+       pre-arm; this adds the SP_BUILTIN_POLY_ARRAY switch arm, mirroring the
+       include? array case). No block, argc==1, no user class defines it. */
+    int is_arrindex = ncand == 0 && (sp_streq(name, "index") || sp_streq(name, "find_index")) &&
+                      argc == 1 && nt_ref(nt, id, "block") < 0;
+    if (ncand > 0 || is_index || is_include || is_fetch || is_push || is_pred || is_strftime || is_strjust || is_strbyteslice || is_strindex || is_strwith || is_strsplit || is_arrindex) {
       TyKind ret = comp_ntype(c, id);
       int tv = ++g_tmp, tr = ++g_tmp;
       int *atmp = malloc(sizeof(int) * argc);
@@ -3463,6 +3469,36 @@ else {
           char tn[32]; snprintf(tn, sizeof tn, "_t%d", atmp[0]);
           emit_boxed_text(c, at, tn, b);
           buf_printf(b, "; _t%d = sp_PolyPolyHash_has_key((sp_PolyPolyHash *)_t%d.v.p, _t%d); break; }", tr, tv, tbox);
+        }
+      }
+      /* index/find_index(x) on an Array receiver held in a poly slot: first
+         index of x by ==, or nil. The concrete array type is only known at
+         runtime, so emit a case per storage kind (a homogeneous ["a","b"] is a
+         StrArray, [1,2] an IntArray, mixed a PolyArray), mirroring include?.
+         String#index is the SP_TAG_STR pre-arm; a non-array/non-string poly
+         falls through to the seed like include?, i.e. not-found. */
+      if (is_arrindex) {
+        const char *nilv = (ret == TY_POLY) ? "sp_box_nil()" : "SP_INT_NIL";
+        if (atmp_ty[0] == TY_STRING) {
+          int tn = ++g_tmp;
+          buf_printf(b, " case SP_BUILTIN_STR_ARRAY: { mrb_int _t%d = sp_StrArray_index((sp_StrArray *)_t%d.v.p, _t%d); _t%d = _t%d < 0 ? %s : ", tn, tv, atmp[0], tr, tn, nilv);
+          buf_printf(b, ret == TY_POLY ? "sp_box_int(_t%d)" : "_t%d", tn);
+          buf_puts(b, "; break; }");
+        }
+        if (atmp_ty[0] == TY_INT) {
+          int tn = ++g_tmp;
+          buf_printf(b, " case SP_BUILTIN_INT_ARRAY: { mrb_int _t%d = sp_IntArray_index((sp_IntArray *)_t%d.v.p, _t%d); _t%d = _t%d < 0 ? %s : ", tn, tv, atmp[0], tr, tn, nilv);
+          buf_printf(b, ret == TY_POLY ? "sp_box_int(_t%d)" : "_t%d", tn);
+          buf_puts(b, "; break; }");
+        }
+        {
+          int tbox = ++g_tmp, tn = ++g_tmp;
+          buf_printf(b, " case SP_BUILTIN_POLY_ARRAY: { sp_RbVal _t%d = ", tbox);
+          char an[32]; snprintf(an, sizeof an, "_t%d", atmp[0]);
+          emit_boxed_text(c, atmp_ty[0], an, b);
+          buf_printf(b, "; mrb_int _t%d = sp_PolyArray_index((sp_PolyArray *)_t%d.v.p, _t%d); _t%d = _t%d < 0 ? %s : ", tn, tv, tbox, tr, tn, nilv);
+          buf_printf(b, ret == TY_POLY ? "sp_box_int(_t%d)" : "_t%d", tn);
+          buf_puts(b, "; break; }");
         }
       }
       /* strftime on a poly value that is really a Time: format it; nil or any
