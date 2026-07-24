@@ -1944,6 +1944,16 @@ static int sp_open_fifo_aware(const char *path, int fl, mode_t perm) {
 }
 sp_File *sp_File_open_flags_perm(const char *path, sp_int fl, sp_int perm) {SP_GC_ROOT_STR(path);
   if (perm == SP_INT_NIL) perm = 0666;
+#ifdef SP_MULTI_CTX
+  /* the backend takes a stdio mode string, not open(2) flags or bits */
+  int acc = (int)fl & O_ACCMODE;
+  const char *m = (acc == O_RDONLY) ? "r"
+                : (acc == O_WRONLY) ? (((int)fl & O_APPEND) ? "a" : "w")
+                : (((int)fl & O_APPEND) ? "a+" : ((int)fl & O_TRUNC) ? "w+" : "r+");
+  FILE *vfp = sp_vfs_fopen(path, m, m);
+  if (!vfp) sp_file_open_raise(path);
+  sp_File *f = sp_io_vfs_wrap(vfp, m);
+#else
   int fd = sp_open_fifo_aware(path ? path : "", (int)fl | O_CLOEXEC, (mode_t)perm);
   if (fd < 0) sp_file_open_raise(path);
   int acc = (int)fl & O_ACCMODE;
@@ -1951,6 +1961,7 @@ sp_File *sp_File_open_flags_perm(const char *path, sp_int fl, sp_int perm) {SP_G
                 : (acc == O_WRONLY) ? (((int)fl & O_APPEND) ? "a" : "w")
                 : (((int)fl & O_APPEND) ? "a+" : "r+");
   sp_File *f = sp_io_fdopen(fd, m);
+#endif
   f->path = path;
   f->is_file = 1;
   return f;
@@ -1981,15 +1992,23 @@ sp_File *sp_File_open_perm(const char *path, const char *mode, sp_int perm) {SP_
     }
   }
   if (perm == SP_INT_NIL) perm = 0666;
-  int fd = sp_open_fifo_aware(path ? path : "", fl | O_CLOEXEC, (mode_t)perm);
-  if (fd < 0) sp_file_open_raise(path);
   /* fdopen reads its own mode grammar ("wx+" is write-only to it): hand it
      the access mode the flag word says, as the flags form does */
   int acc = fl & O_ACCMODE;
   const char *fm = (acc == O_RDONLY) ? "r"
                  : (acc == O_WRONLY) ? ((fl & O_APPEND) ? "a" : "w")
                  : ((fl & O_APPEND) ? "a+" : (m[0] == 'w') ? "w+" : "r+");
+#ifdef SP_MULTI_CTX
+  /* the instance's backend opens the path (the checked mode, as written);
+     the stream over its handle takes the plain access mode */
+  FILE *vfp = sp_vfs_fopen(path, m, fm);
+  if (!vfp) sp_file_open_raise(path);
+  sp_File *f = sp_io_vfs_wrap(vfp, fm);
+#else
+  int fd = sp_open_fifo_aware(path ? path : "", fl | O_CLOEXEC, (mode_t)perm);
+  if (fd < 0) sp_file_open_raise(path);
   sp_File *f = sp_io_fdopen(fd, fm);
+#endif
   f->path = path;
   f->mode = m;
   f->is_file = 1;
@@ -2335,10 +2354,23 @@ const char *sp_dir_home(void) {
   if (!h) return sp_str_empty;
   return sp_str_dup_external(h);
 }
-void sp_Dir_fin(void *p) { sp_Dir *d = (sp_Dir *)p; if (d->dp) { closedir(d->dp); d->dp = NULL; } }
+/* Under SP_MULTI_CTX a Dir opened by path holds the instance backend's opaque
+   directory handle in dp (Dir.new / #read / #close / the finalizer); the
+   positional ops that need a real DIR raise NotImplementedError there. */
+#ifdef SP_MULTI_CTX
+#define SP_DIR_CLOSE(dp) SP_CTX()->io_closedir(SP_CTX()->io_ud, (dp))
+#define SP_DIR_NO_POS(what) sp_raise_cls("NotImplementedError", what " is not supported by this port's directory backend")
+#else
+#define SP_DIR_CLOSE(dp) closedir(dp)
+#endif
+void sp_Dir_fin(void *p) { sp_Dir *d = (sp_Dir *)p; if (d->dp) { SP_DIR_CLOSE(d->dp); d->dp = NULL; } }
 void sp_Dir_scan(void *p) { sp_Dir *d = (sp_Dir *)p; if (d->path) sp_mark_string(d->path); }
 sp_Dir *sp_Dir_new(const char *path) {SP_GC_ROOT_STR(path);
+#ifdef SP_MULTI_CTX
+  DIR *dp = (DIR *)SP_CTX()->io_opendir(SP_CTX()->io_ud, path ? path : "");
+#else
   DIR *dp = opendir(path ? path : "");
+#endif
   if (!dp)
     sp_raise_cls("Errno::ENOENT",
                  sp_sprintf("No such file or directory @ dir_initialize - %s", path ? path : ""));
@@ -2353,6 +2385,9 @@ sp_Dir *sp_Dir_new(const char *path) {SP_GC_ROOT_STR(path);
 /* Dir.for_fd(fd): take over a descriptor already opened on a directory. The
    handle owns the fd from here, as CRuby's does. */
 sp_Dir *sp_Dir_for_fd(sp_int fd) {
+#ifdef SP_MULTI_CTX
+  (void)fd; SP_DIR_NO_POS("Dir.for_fd");
+#endif
   DIR *dp = fd >= 0 ? fdopendir((int)fd) : NULL;
   if (!dp) sp_raise_cls("Errno::EBADF", "Bad file descriptor - fdopendir");
   sp_Dir *d = (sp_Dir *)sp_gc_alloc(sizeof(sp_Dir), sp_Dir_fin, sp_Dir_scan);
@@ -2366,6 +2401,9 @@ sp_Dir *sp_Dir_for_fd(sp_int fd) {
    renamed. Rewinds first so the listing is complete however far #read got. */
 sp_StrArray *sp_Dir_entries_h(sp_Dir *d, sp_int children) {SP_GC_ROOT(d);
   SP_DIR_OPEN(d);
+#ifdef SP_MULTI_CTX
+  SP_DIR_NO_POS("Dir#entries on an open handle");
+#endif
   rewinddir(d->dp);
   sp_StrArray *a = sp_StrArray_new();
   SP_GC_ROOT(a);
@@ -2387,8 +2425,14 @@ SP_NORETURN SP_COLD void sp_dir_raise_closed(void) {
 }
 const char *sp_Dir_read(sp_Dir *d) {
   SP_DIR_OPEN(d);
+#ifdef SP_MULTI_CTX
+  char nb[512];
+  if (!SP_CTX()->io_readdir(SP_CTX()->io_ud, d->dp, nb, (int)sizeof(nb))) return NULL;
+  return sp_sprintf("%s", nb);
+#else
   struct dirent *e = readdir(d->dp);
   return e ? sp_sprintf("%s", e->d_name) : NULL;
+#endif
 }
 /* NULL is Ruby nil in the string convention: a Dir from Dir.for_fd has no path,
    and CRuby answers nil for it rather than an empty string (#3365). */
@@ -2405,11 +2449,18 @@ sp_RbVal sp_Dir_cmp(sp_Dir *d, sp_RbVal other) {
     return sp_box_int(0);
   return sp_box_nil();
 }
-sp_RbVal sp_Dir_close(sp_Dir *d) { if (d && d->dp) { closedir(d->dp); d->dp = NULL; } return sp_box_nil(); }
+sp_RbVal sp_Dir_close(sp_Dir *d) { if (d && d->dp) { SP_DIR_CLOSE(d->dp); d->dp = NULL; } return sp_box_nil(); }
+#ifdef SP_MULTI_CTX
+sp_Dir *sp_Dir_rewind(sp_Dir *d) { SP_DIR_OPEN(d); SP_DIR_NO_POS("Dir#rewind"); return d; }
+sp_int sp_Dir_tell(sp_Dir *d) { SP_DIR_OPEN(d); SP_DIR_NO_POS("Dir#tell"); return 0; }
+sp_Dir *sp_Dir_seek(sp_Dir *d, sp_int pos) { (void)pos; SP_DIR_OPEN(d); SP_DIR_NO_POS("Dir#seek"); return d; }
+sp_int sp_Dir_fileno(sp_Dir *d) { SP_DIR_OPEN(d); SP_DIR_NO_POS("Dir#fileno"); return -1; }
+#else
 sp_Dir *sp_Dir_rewind(sp_Dir *d) { SP_DIR_OPEN(d); rewinddir(d->dp); return d; }
 sp_int sp_Dir_tell(sp_Dir *d) { SP_DIR_OPEN(d); return (sp_int)telldir(d->dp); }
 sp_Dir *sp_Dir_seek(sp_Dir *d, sp_int pos) { SP_DIR_OPEN(d); seekdir(d->dp, (long)pos); return d; }
 sp_int sp_Dir_fileno(sp_Dir *d) { SP_DIR_OPEN(d); return (sp_int)dirfd(d->dp); }
+#endif
 sp_StrArray *sp_dir_entries(const char *path) {SP_GC_ROOT_STR(path); return sp_dir_entries_impl(path, 0); }
 sp_bool sp_dir_empty(const char *path) {SP_GC_ROOT_STR(path);
   struct stat st;

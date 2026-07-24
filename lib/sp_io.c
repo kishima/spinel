@@ -5,9 +5,20 @@
  * (gets / read / read_n / path) stay inline in spinel_rt.h.
  *
  * Self-contained: includes sp_io.h (the sp_File layout) + sp_gc.h
- * (sp_mark_string), not spinel_rt.h. */
+ * (sp_mark_string), not spinel_rt.h.
+ *
+ * SP_MULTI_CTX: a file the program opens by path goes through the
+ * per-instance I/O backend (sp_ctx io_* -> a host VFS, e.g. fmruby's HAL).
+ * The backend's opaque handle is wrapped in a stdio stream with
+ * fopencookie(3), so every handle op below -- gets, read, seek, eof, close --
+ * stays the same stdio code as the default build. Pipes, sockets and the
+ * standard streams keep their real descriptors. The default build is
+ * unchanged. */
+#if defined(SP_MULTI_CTX) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE   /* fopencookie, for the per-instance VFS backend below */
+#endif
 #include "sp_io.h"
-#include "sp_gc.h"   /* sp_mark_string */
+#include "sp_gc.h"   /* sp_mark_string; also pulls sp_ctx.h for the VFS backend */
 #include <stdlib.h>
 #include <stddef.h>   /* offsetof, for the static-stream layout assertion */
 #include <string.h>
@@ -1247,20 +1258,36 @@ sp_int sp_File_rewind(sp_File *f) {
 
 /* ---- File metadata predicates ----
    libc / WinAPI only, no spinel-string allocation and no shared mutable
-   state, so they live here rather than inline in spinel_rt.h. */
+   state, so they live here rather than inline in spinel_rt.h. Under
+   SP_MULTI_CTX they ask the instance's backend stat, so virtual paths
+   resolve. */
 sp_bool sp_file_directory(const char *path) {
+#ifdef SP_MULTI_CTX
+  int is_dir = 0;
+  return path && SP_CTX()->io_stat(SP_CTX()->io_ud, path, NULL, &is_dir, NULL) == 0 && is_dir;
+#else
   struct stat st;
   return path && stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+#endif
 }
 
 sp_bool sp_file_file(const char *path) {
+#ifdef SP_MULTI_CTX
+  int is_reg = 0;
+  return path && SP_CTX()->io_stat(SP_CTX()->io_ud, path, NULL, NULL, &is_reg) == 0 && is_reg;
+#else
   struct stat st;
   return path && stat(path, &st) == 0 && S_ISREG(st.st_mode);
+#endif
 }
 
 sp_bool sp_file_symlink(const char *path) {
+#ifdef SP_MULTI_CTX
+  (void)path; return 0;   /* the backend contract has no links */
+#else
   struct stat st;
   return path && lstat(path, &st) == 0 && S_ISLNK(st.st_mode);
+#endif
 }
 
 /* map errno to the matching Errno:: class (see sp_io.h) */
@@ -1358,7 +1385,13 @@ sp_int sp_file_lutime_ns(int64_t asec, int32_t ansec, int64_t msec, int32_t mnse
 /* stat, not fopen: opening a FIFO for read blocks until a writer appears, so
    the old fopen probe hung File.exist? on a fresh mkfifo path (#3118). stat
    also answers true for directories, matching CRuby. */
-sp_bool sp_file_exist(const char *path) { struct stat st; return path && stat(path, &st) == 0; }
+sp_bool sp_file_exist(const char *path) {
+#ifdef SP_MULTI_CTX
+  return path && SP_CTX()->io_stat(SP_CTX()->io_ud, path, NULL, NULL, NULL) == 0;
+#else
+  struct stat st; return path && stat(path, &st) == 0;
+#endif
+}
 /* unlink(2), not remove(3): remove would take a directory too, which
    File.delete refuses (EPERM here, EISDIR on Linux), as CRuby does. */
 void sp_file_path_check(const char *path) {
@@ -1521,3 +1554,106 @@ sp_File *sp_File_reopen(sp_File *f, const char *path, const char *mode) {SP_GC_R
   f->lineno = 0;
   return f;
 }
+
+#ifdef SP_MULTI_CTX
+/* ---- per-instance VFS backend (SP_MULTI_CTX) ---- */
+
+/* A path-opened file under SP_MULTI_CTX: the backend handle behind a stdio
+   stream. The cookie remembers the instance that opened it, so a finalizer
+   that runs later still closes through the same backend. */
+typedef struct { sp_ctx *c; void *h; } sp_vfs_cookie;
+#if defined(__GLIBC__)
+typedef off64_t sp_vfs_off;
+#else
+typedef off_t sp_vfs_off;   /* newlib's cookie_seek_function_t */
+#endif
+static ssize_t sp_vfs_cread(void *ck, char *buf, size_t n) {
+  sp_vfs_cookie *k = (sp_vfs_cookie *)ck;
+  long got = k->c->io_read(k->c->io_ud, k->h, buf, (long)n);
+  return got < 0 ? -1 : (ssize_t)got;
+}
+static ssize_t sp_vfs_cwrite(void *ck, const char *buf, size_t n) {
+  sp_vfs_cookie *k = (sp_vfs_cookie *)ck;
+  long put = k->c->io_write(k->c->io_ud, k->h, buf, (long)n);
+  return put < 0 ? -1 : (ssize_t)put;
+}
+static int sp_vfs_cseek(void *ck, sp_vfs_off *off, int whence) {
+  sp_vfs_cookie *k = (sp_vfs_cookie *)ck;
+  int w = whence == SEEK_CUR ? 1 : whence == SEEK_END ? 2 : 0;   /* the backend's 0/1/2 */
+  long r = k->c->io_seek(k->c->io_ud, k->h, (long)*off, w);
+  if (r < 0) return -1;
+  *off = (sp_vfs_off)r;
+  return 0;
+}
+static int sp_vfs_cclose(void *ck) {
+  sp_vfs_cookie *k = (sp_vfs_cookie *)ck;
+  int r = k->c->io_close(k->c->io_ud, k->h);
+  free(k);
+  return r;
+}
+/* Open `path` through the current instance's backend as a stdio stream, or
+   NULL with errno set (ENOENT when the backend does not say). `bmode` goes to
+   the backend as the program wrote it; `smode` is the plain stdio access mode
+   the stream is opened with. */
+FILE *sp_vfs_fopen(const char *path, const char *bmode, const char *smode) {
+  sp_ctx *c = SP_CTX();
+  errno = 0;
+  void *h = c->io_open(c->io_ud, path ? path : "", bmode ? bmode : "r");
+  if (!h) { if (!errno) errno = ENOENT; return NULL; }
+  sp_vfs_cookie *k = (sp_vfs_cookie *)malloc(sizeof *k);
+  k->c = c; k->h = h;
+  cookie_io_functions_t fns = { sp_vfs_cread, sp_vfs_cwrite, sp_vfs_cseek, sp_vfs_cclose };
+  FILE *fp = fopencookie(k, smode ? smode : "r", fns);
+  if (!fp) { c->io_close(c->io_ud, h); free(k); errno = ENOMEM; }
+  return fp;
+}
+/* The sp_File for such a stream: what sp_io_fdopen builds for a descriptor. */
+sp_File *sp_io_vfs_wrap(FILE *fp, const char *mode) {SP_GC_ROOT_STR(mode);
+  sp_File *f = (sp_File *)sp_gc_alloc(sizeof(sp_File), sp_File_fin, sp_File_scan);
+  f->fp = fp;
+  f->path = NULL;
+  f->mode = mode;
+  f->lineno = 0;
+  return f;
+}
+
+/* ---- default libc/POSIX I/O backend (sp_ctx io_* fall back to these) ---- */
+void *sp_io_posix_open(void *ud, const char *path, const char *mode) {
+  (void)ud; return (void *)fopen(path ? path : "", mode ? mode : "r");
+}
+long sp_io_posix_read(void *ud, void *h, char *buf, long n) {
+  (void)ud; return h ? (long)fread(buf, 1, (size_t)n, (FILE *)h) : -1;
+}
+long sp_io_posix_write(void *ud, void *h, const char *buf, long n) {
+  (void)ud; return h ? (long)fwrite(buf, 1, (size_t)n, (FILE *)h) : -1;
+}
+long sp_io_posix_seek(void *ud, void *h, long off, int whence) {
+  (void)ud;
+  if (!h) return -1;
+  int w = (whence == 1) ? SEEK_CUR : (whence == 2) ? SEEK_END : SEEK_SET;
+  if (fseeko((FILE *)h, (off_t)off, w) != 0) return -1;
+  return (long)ftello((FILE *)h);
+}
+long sp_io_posix_tell(void *ud, void *h) { (void)ud; return h ? (long)ftello((FILE *)h) : -1; }
+int sp_io_posix_close(void *ud, void *h) { (void)ud; return h ? fclose((FILE *)h) : 0; }
+int sp_io_posix_stat(void *ud, const char *path, long *size, int *is_dir, int *is_reg) {
+  (void)ud;
+  struct stat st;
+  if (!path || stat(path, &st) != 0) return -1;
+  if (size) *size = (long)st.st_size;
+  if (is_dir) *is_dir = S_ISDIR(st.st_mode) ? 1 : 0;
+  if (is_reg) *is_reg = S_ISREG(st.st_mode) ? 1 : 0;
+  return 0;
+}
+void *sp_io_posix_opendir(void *ud, const char *path) { (void)ud; return (void *)opendir(path ? path : ""); }
+int sp_io_posix_readdir(void *ud, void *dh, char *namebuf, int cap) {
+  (void)ud;
+  if (!dh || cap <= 0) return 0;
+  struct dirent *e = readdir((DIR *)dh);
+  if (!e) return 0;
+  strncpy(namebuf, e->d_name, (size_t)cap - 1);
+  namebuf[cap - 1] = 0;
+  return 1;
+}
+int sp_io_posix_closedir(void *ud, void *dh) { (void)ud; return dh ? closedir((DIR *)dh) : 0; }
+#endif /* SP_MULTI_CTX */

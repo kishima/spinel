@@ -231,7 +231,9 @@ SP_NORETURN void sp_file_raise_errno(const char *op, const char *path);
 void sp_file_path_check(const char *path);
 
 #include <dirent.h>
-/* Dir handle (Dir.open / Dir.each_child ...): ops live in lib/sp_cold.c. */
+/* Dir handle (Dir.open / Dir.each_child ...): ops live in lib/sp_cold.c.
+   dp is `DIR *` in the default build, or the backend's opaque dir handle under
+   SP_MULTI_CTX (stored through the same slot; a `void *`-sized pointer). */
 typedef struct { DIR *dp; const char *path; } sp_Dir;
 /* The Dir counterpart of SP_IO_OPEN: reading or positioning a closed handle
    is IOError "closed directory" in CRuby; #close, #path and #inspect work. */
@@ -254,5 +256,26 @@ sp_int sp_io_sysopen(const char *path, sp_int flags, sp_int perm);
    sp_json_*_fn hooks. NULL when the program defines no #to_io, which is when
    an element that is not an IO is the TypeError it always was. */
 extern sp_File *(*sp_user_to_io_hook)(sp_RbVal);
+
+#ifdef SP_MULTI_CTX
+/* A path-opened file as a stdio stream over the instance's backend handle
+   (fopencookie), and the sp_File around it. See sp_io.c. */
+FILE *sp_vfs_fopen(const char *path, const char *bmode, const char *smode);
+sp_File *sp_io_vfs_wrap(FILE *fp, const char *mode);
+
+/* Default libc/POSIX I/O backend (sp_ctx io_* fall back to these when the
+   instance config leaves a slot NULL). The opaque handle is a FILE*, the dir
+   handle a DIR*. Behaves identically to the default build's direct calls. */
+void  *sp_io_posix_open(void *ud, const char *path, const char *mode);
+long   sp_io_posix_read(void *ud, void *h, char *buf, long n);
+long   sp_io_posix_write(void *ud, void *h, const char *buf, long n);
+long   sp_io_posix_seek(void *ud, void *h, long off, int whence);
+long   sp_io_posix_tell(void *ud, void *h);
+int    sp_io_posix_close(void *ud, void *h);
+int    sp_io_posix_stat(void *ud, const char *path, long *size, int *is_dir, int *is_reg);
+void  *sp_io_posix_opendir(void *ud, const char *path);
+int    sp_io_posix_readdir(void *ud, void *dh, char *namebuf, int cap);
+int    sp_io_posix_closedir(void *ud, void *dh);
+#endif
 
 #endif
