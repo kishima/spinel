@@ -19,10 +19,14 @@
 #include <string.h>
 #include <unistd.h>   /* pipe, isatty */
 #include <sys/stat.h> /* stat() for the File predicates */
-/* <sys/ioctl.h> (TIOCGWINSZ for #winsize) is absent on bare-metal / RTOS newlib
-   (ESP-IDF); auto-detect it so those targets report a 0x0 winsize (no tty). */
+/* <sys/ioctl.h> provides TIOCGWINSZ for File#winsize. On bare-metal / RTOS
+   newlib (ESP-IDF) the header may still EXIST as a stub that does not define
+   TIOCGWINSZ or struct winsize, so header presence is not enough -- key the
+   feature on the TIOCGWINSZ macro itself. Absent -> report a 0x0 winsize. */
 #if defined(__has_include) && __has_include(<sys/ioctl.h>)
 #  include <sys/ioctl.h>
+#endif
+#if defined(TIOCGWINSZ)
 #  define SP_HAVE_IOCTL 1
 #else
 #  define SP_HAVE_IOCTL 0
