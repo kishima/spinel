@@ -3150,7 +3150,12 @@ static int emit_poly_method_dispatch(Compiler *c, int id, Buf *b) {
        include? array case). No block, argc==1, no user class defines it. */
     int is_arrindex = ncand == 0 && (sp_streq(name, "index") || sp_streq(name, "find_index")) &&
                       argc == 1 && nt_ref(nt, id, "block") < 0;
-    if (ncand > 0 || is_index || is_include || is_fetch || is_push || is_pred || is_strftime || is_strjust || is_strbyteslice || is_strindex || is_strwith || is_strsplit || is_arrindex) {
+    /* to_s(base) on a poly value that is really an Integer: base conversion
+       (e.g. `byte.to_s(16)`). Only the 1-arg form -- argc==0 to_s is the
+       universal poly-to-string already handled by the default arm. */
+    int is_intto_s = ncand == 0 && sp_streq(name, "to_s") && argc == 1 &&
+                     infer_type(c, argv[0]) == TY_INT;
+    if (ncand > 0 || is_index || is_include || is_fetch || is_push || is_pred || is_strftime || is_strjust || is_strbyteslice || is_strindex || is_strwith || is_strsplit || is_arrindex || is_intto_s) {
       TyKind ret = comp_ntype(c, id);
       int tv = ++g_tmp, tr = ++g_tmp;
       int *atmp = malloc(sizeof(int) * argc);
@@ -3259,6 +3264,16 @@ static int emit_poly_method_dispatch(Compiler *c, int id, Buf *b) {
         buf_printf(b, "if (_t%d.tag == SP_TAG_STR) { _t%d = ", tv, tr);
         if (ret == TY_POLY) buf_printf(b, "sp_box_str_array(sp_str_split_drop_trailing(_t%d.v.s, %s))", tv, aref);
         else buf_printf(b, "sp_str_split_drop_trailing(_t%d.v.s, %s)", tv, aref);
+        buf_puts(b, "; } else ");
+      }
+      /* to_s(base) on a TAG_INT receiver: base conversion via the int runtime. */
+      if (is_intto_s && (ret == TY_POLY || ret == TY_STRING)) {
+        char bref[64];
+        if (atmp_ty[0] == TY_POLY) snprintf(bref, sizeof bref, "sp_poly_to_i(_t%d)", atmp[0]);
+        else snprintf(bref, sizeof bref, "_t%d", atmp[0]);
+        buf_printf(b, "if (_t%d.tag == SP_TAG_INT) { _t%d = ", tv, tr);
+        if (ret == TY_POLY) buf_printf(b, "sp_box_str(sp_int_to_s_base(_t%d.v.i, %s))", tv, bref);
+        else buf_printf(b, "sp_int_to_s_base(_t%d.v.i, %s)", tv, bref);
         buf_puts(b, "; } else ");
       }
       /* The builtin index/bit-ref arms use the index as a raw mrb_int; unbox it

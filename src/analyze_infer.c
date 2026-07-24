@@ -1482,6 +1482,19 @@ TyKind infer_call(Compiler *c, int id) {
     }
   }
 
+  /* to_s(base) on a poly value that is really an Integer -> String (byte.to_s(16)
+     in an error message). The codegen gives it a SP_TAG_INT arm; argc==0 to_s is
+     the universal poly-to-string handled elsewhere. Only when no user to_s. */
+  if (recv >= 0 && rt == TY_POLY && sp_streq(name, "to_s") && argc == 1 &&
+      infer_type(c, argv[0]) == TY_INT) {
+    int ncand = 0;
+    for (int k = 0; k < c->nclasses; k++) {
+      int mi = comp_method_in_chain(c, k, name, NULL);
+      if (mi >= 0 && argc >= c->scopes[mi].nrequired) ncand++;
+    }
+    if (ncand == 0) return TY_STRING;
+  }
+
   /* proc {} / lambda {} / Proc.new {} -> a first-class Proc value */
   if (is_proc_literal(c, id)) return TY_PROC;
 
