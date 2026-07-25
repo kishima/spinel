@@ -663,7 +663,12 @@ static inline int sp_str_eq(const char*a,const char*b){
    moved to sp_gc.h (shared so lib/sp_marshal.c can root its in-flight objects).
    sp_re_mark_globals is defined below (with the regex globals it marks) and
    carries external linkage so the collector body can reach it. */
+/* Must agree with the definition in lib/sp_gc.c: the collector allocates the
+   work list, the generated TU's sp_gc_mark decides against this bound whether
+   to push or recurse. See sp_gc.c for why a port shrinks it. */
+#ifndef SP_GC_MARK_STACK_MAX
 #define SP_GC_MARK_STACK_MAX (1024*64)
+#endif
 #define SP_GC_NBUCKETS 32
 static sp_gc_hdr*sp_gc_buckets[SP_GC_NBUCKETS];
 static inline int sp_gc_bucket(size_t sz){int b=(int)(sz/16);return b<SP_GC_NBUCKETS?b:SP_GC_NBUCKETS-1;}
