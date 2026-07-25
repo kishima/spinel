@@ -1422,7 +1422,13 @@ static void sp_mark_at_exit_hooks(void);
    runs via the heap walker. Without this, top-level `Fiber[:k] = v`
    writes get prematurely collected. The forward declaration is
    needed because sp_fiber_root is defined further down in the
-   Fiber runtime block. */
+   Fiber runtime block.
+   SP_NO_MMAN ports drop lib/sp_fiber.c from their build (it mmaps its
+   stacks), so there is no fiber root to mark and the definition does not
+   exist. The guard has to be here, not left to --gc-sections: this
+   function is registered as the collector's root-marking hook, so it is
+   always live and its call to sp_mark_fiber_root_storage would be an
+   undefined reference at link time. */
 /* External linkage: lib/sp_gc.c's sp_gc_mark_all reaches this by name. */
 extern SP_TLS sp_RbVal _sp_proc_poly_args[SP_PROC_ARG_SLOTS];   /* the proc calling convention's side channel, defined below */
 extern SP_TLS sp_RbVal _sp_proc_poly_ret;
@@ -1454,7 +1460,9 @@ static void sp_re_mark_globals(void) {
   SP_GLB_PHASE("globals:at-exit");
   sp_mark_at_exit_hooks();
   SP_GLB_PHASE("globals:fiber-storage");
+#ifndef SP_NO_MMAN
   sp_mark_fiber_root_storage();
+#endif
   /* $0 is a heap string held by this static and by nothing the program can
      name (a full string sweep freed it once, and later reads came from
      whatever the slot held next); sp_str_empty and the literal it starts
