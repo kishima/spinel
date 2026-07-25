@@ -530,6 +530,14 @@ test-lib-mode: $(SPINEL) $(SP_RT_LIB)
 test32: $(SPINEL)
 	@SPINEL=$(SPINEL) CC="$(CC)" ./scripts/test32.sh
 
+# Stack budget gate for small-stack ports. Compiles the runtime (and a generated
+# TU, for the sp_runtime.h statics) with a port's SP_STACK_SCRATCH_MAX and fails
+# on any runtime frame over 1KB. A hosted stack hides these; a FreeRTOS task
+# stack does not. See scripts/check_stack.sh.
+.PHONY: check-stack
+check-stack: $(SPINEL)
+	@CC="$(CC)" ./scripts/check_stack.sh
+
 # Multi-instance runtime smoke test (-DSP_MULTI_CTX). Builds the on-demand MC
 # archive, then runs a single-instance and an N-thread concurrent program plus
 # an ASan pass (see test/multi_ctx/smoke.sh). Standalone like test-lib-mode: a
