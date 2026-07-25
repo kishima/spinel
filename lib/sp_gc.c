@@ -139,6 +139,17 @@ SP_TLS int sp_gc_in_sweeper = 0; /* a sweeper thread: finalizers skip the per-wo
 /* ---- Collector-private globals ----
  * Under SP_MULTI_CTX the relocated ones are sp_ctx fields (macros in sp_ctx.h);
  * the static definitions are dropped so the state is per-instance. */
+/* Initial work-list capacity for the mark phase, allocated lazily as one block
+   of SP_GC_MARK_STACK_MAX pointers -- 512KB on LP64, 256KB on ILP32. When it
+   fills, sp_gc_mark doubles it (below), and only a failed grow falls back to
+   recursing through the scan hook. Ports whose heap is a fixed pool of a few
+   hundred KB must shrink it with -DSP_GC_MARK_STACK_MAX=<n>; at the default a
+   single instance asks its allocator for a contiguous block bigger than the
+   whole pool it was given. Keep it comfortably above the object count the pool
+   can hold, so the recursive path stays rare. */
+#ifndef SP_GC_MARK_STACK_MAX
+#define SP_GC_MARK_STACK_MAX (1024*64)
+#endif
 #ifndef SP_MULTI_CTX
 static int sp_gc_verify = 0;
 static sp_gc_hdr *sp_gc_old_heap = NULL;
@@ -146,8 +157,8 @@ static sp_gc_hdr *sp_gc_old_heap = NULL;
 /* The mark stack grows on demand: overflowing it used to drop the walk into
    recursive scanning, and a live set of a few hundred thousand containers
    (an A* frontier of [vertex, priority] pairs) then overflowed the C stack
-   and crashed the process mid-collection. */
-#define SP_GC_MARK_STACK_MAX (1024*64)
+   and crashed the process mid-collection. SP_GC_MARK_STACK_MAX (above) is
+   the size it starts at. */
 /* Per thread: the collector's, and under the parallel mark each helper's
    own; a scan pushes onto the stack of the thread running it. */
 #ifndef SP_MULTI_CTX
