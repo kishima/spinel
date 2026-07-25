@@ -1,0 +1,26 @@
+# Runtime functions allowed to exceed the stack limit checked by
+# scripts/check_stack.sh. One symbol per line, with the reason -- an entry here
+# is a promise that a small-stack port either never reaches the function or can
+# afford the frame.
+#
+# GCC clone suffixes (.isra, .constprop, .part) are matched automatically, so
+# list the base symbol name.
+
+# Integer#to_s for bignums, divide-and-conquer path (mruby's bigint, vendored).
+# ~1.4KB is one struct of mpz scratch held by value, and the function recurses,
+# so the real cost scales with the operand. Reached only by converting an
+# integer too large for mrb_int to a string; the ports built so far do no
+# bignum arithmetic. Move the struct to the heap if a port needs this.
+mpz_get_str_dc
+
+# Kernel#format / String#% over a boxed argument list (upstream's
+# sp_str_format_polyarr). ~1.2KB at -m32 -O2 is the sum of several small
+# fixed buffers (a conversion spec, a %{name}, a width, a rewritten spec, a
+# 256-byte render) plus inlined boxing; none is line- or path-sized, and
+# splitting them out would be churn in upstream code. Measured 1184 bytes.
+sp_str_format_polyarr
+
+# The raise path itself (upstream's sp_raise_cls), ~1.1KB at -m32 -O2 from
+# inlined exception-object construction; no scratch buffer. Reached on every
+# raise, so a port's task stack must carry it. Measured 1104 bytes.
+sp_raise_cls

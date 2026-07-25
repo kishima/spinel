@@ -177,6 +177,8 @@ int sp_fmt_binary(const char *spec, size_t sl, char conv, long long val,
 
 /* File.expand_path(path[, base]): absolute, `.`/`..`/`//`-normalized path.
    Depends only on sp_alloc.h + libc; no program-generated symbols. */
+/* File.expand_path: 24KB of path scratch (raw/cwd/basebuf) -- omitted below the stack budget (SP_STACK_SCRATCH_MAX in sp_types.h) */
+#if SP_HAVE_PATH_HELPERS
 const char *sp_file_expand_path(const char *path, const char *base) {
   char raw[8192];
   char cwd[4096];
@@ -253,8 +255,11 @@ const char *sp_file_expand_path(const char *path, const char *base) {
   sp_str_set_len(out, olen);
   return out;
 }
+#endif /* SP_HAVE_PATH_HELPERS */
 
 /* File.readlink(path): the symlink target as a fresh spinel string (#3005) */
+/* File.readlink: PATH_MAX buffer, and no links on a port FS -- omitted below the stack budget (SP_STACK_SCRATCH_MAX in sp_types.h) */
+#if SP_HAVE_PATH_HELPERS
 const char *sp_file_readlink(const char *path) {SP_GC_ROOT_STR(path);
   char buf[4096];
   ssize_t n = readlink(path ? path : "", buf, sizeof(buf) - 1);
@@ -270,6 +275,7 @@ const char *sp_file_readlink(const char *path) {SP_GC_ROOT_STR(path);
   sp_str_set_len(out, (size_t)n);
   return out;
 }
+#endif /* SP_HAVE_PATH_HELPERS */
 
 /* ---- String#to_c parse + Dir.glob (cold; moved from spinel_rt.h) ---- */
 
@@ -359,6 +365,8 @@ else {
    File.fnmatch called it a match (#4252). No FNM_PATHNAME: the component holds
    no separator by construction. FNM_PERIOD hides a leading dot unless the
    pattern asks for one, which is CRuby's rule and the flag's own. */
+/* Dir.glob machinery: recursive, ~6KB per level -- omitted below the stack budget (SP_STACK_SCRATCH_MAX in sp_types.h) */
+#if SP_HAVE_PATH_HELPERS
 static int sp_glob_comp_match(const char *comp, const char *name) {
   if (name[0] == '.' && !sp_glob_dotmatch && comp[0] != '.') return 0;
   return fnmatch(comp, name, sp_glob_dotmatch ? 0 : FNM_PERIOD) == 0;
@@ -611,6 +619,7 @@ sp_StrArray *sp_dir_glob(const char *pattern) {
     a->len = w; }
   return a;
 }
+#endif /* SP_HAVE_PATH_HELPERS */
 
 /* ---- File.read/size/mtime/join/readlines + Math.lgamma (cold) ---- */
 
@@ -643,6 +652,8 @@ const char *sp_file_join(const char **parts, int n) {
   return r;
 }
 
+/* File.readlines/_chomp: line-sized fgets buffer -- omitted below the stack budget (SP_STACK_SCRATCH_MAX in sp_types.h) */
+#if SP_HAVE_PATH_HELPERS
 sp_StrArray *sp_file_readlines(const char *path) {SP_GC_ROOT_STR(path);
   sp_StrArray *a = sp_StrArray_new();
   SP_GC_ROOT(a);
@@ -676,6 +687,7 @@ sp_StrArray *sp_file_readlines_chomp(const char *path) {SP_GC_ROOT_STR(path);
   fclose(_fp);
   return a;
 }
+#endif /* SP_HAVE_PATH_HELPERS */
 
 double sp_lgamma_pos(double x) {  /* x > 0 */
   if (x == 1.0 || x == 2.0) return 0.0;
@@ -1819,6 +1831,8 @@ sp_bool sp_file_identical(const char *a, const char *b) {
   if (stat(a ? a : "", &sa) != 0 || stat(b ? b : "", &sb) != 0) return 0;
   return sa.st_dev == sb.st_dev && sa.st_ino == sb.st_ino;
 }
+/* File.realpath / realdirpath: PATH_MAX buffers, and no links on a port FS -- omitted below the stack budget (SP_STACK_SCRATCH_MAX in sp_types.h) */
+#if SP_HAVE_PATH_HELPERS
 const char *sp_file_realpath(const char *path) {SP_GC_ROOT_STR(path);
   char buf[4096];
   if (!realpath(path ? path : "", buf))
@@ -1845,6 +1859,7 @@ const char *sp_file_realdirpath(const char *path) {
   if (strcmp(buf, "/") == 0) return sp_sprintf("/%s", base);
   return sp_sprintf("%s/%s", buf, base);
 }
+#endif /* SP_HAVE_PATH_HELPERS */
 sp_bool sp_file_absolute_path_p(const char *path) { return path && path[0] == '/'; }  /* (#2988) */
 sp_int sp_file_chown(const char *path, sp_int uid, sp_int gid) {SP_GC_ROOT_STR(path);  /* -1 leaves that id unchanged; returns the path count (#2987) */
   if (chown(path ? path : "", (uid_t)uid, (gid_t)gid) != 0)
@@ -2291,7 +2306,11 @@ const char *sp_stat_ftype(sp_File *f) {SP_GC_ROOT(f);
      following handle resolves the link first. */
   const char *p = (f && f->path) ? f->path : "";
   if (sp_stat_nofollow(f)) return sp_file_ftype(p);
+#if SP_HAVE_PATH_HELPERS
   { const char *rp = sp_file_realpath(p); return sp_file_ftype(rp ? rp : p); }
+#else
+  return sp_file_ftype(p);   /* no links to resolve on a port FS */
+#endif
 }
 sp_int sp_file_stat_mode(const char *path) {
   struct stat st;
@@ -2323,6 +2342,8 @@ const char *sp_file_dirname(const char *path) {SP_GC_ROOT_STR(path);
   memcpy(buf, path, n); buf[n] = 0;
   return buf;
 }
+/* Dir.pwd: PATH_MAX buffer, and no cwd on a port FS -- omitted below the stack budget (SP_STACK_SCRATCH_MAX in sp_types.h) */
+#if SP_HAVE_PATH_HELPERS
 const char *sp_dir_pwd(void) {
   char tmp[4096];
   if (!getcwd(tmp, sizeof(tmp))) { return sp_str_empty; }
@@ -2331,6 +2352,7 @@ const char *sp_dir_pwd(void) {
   memcpy(buf, tmp, n + 1);
   return buf;
 }
+#endif /* SP_HAVE_PATH_HELPERS */
 /* Dir.mkdir / Dir.rmdir / Dir.chdir: 0, or the Errno CRuby raises, under
    CRuby's labels; its block-form chdir says dir_chdir0 where this wrapper
    says chdir_path in both forms. A nil path (a NULL string at run time) is
@@ -2718,7 +2740,8 @@ sp_int sp_io_copy_stream(const char *src, const char *dst) {SP_GC_ROOT_STR(src);
   FILE *out = fopen(dst ? dst : "", "wb");
   if (!out) { fclose(in); sp_raise_cls("Errno::ENOENT",
                  sp_sprintf("No such file or directory @ rb_sysopen - %s", dst ? dst : "")); }
-  char buf[8192]; size_t got; sp_int total = 0;
+  /* plain copy chunk: a smaller one only means more iterations */
+  char buf[SP_SCRATCH(8192)]; size_t got; sp_int total = 0;
   while ((got = fread(buf, 1, sizeof buf, in)) > 0) { fwrite(buf, 1, got, out); total += (sp_int)got; }
   fclose(in); fclose(out);
   return total;

@@ -928,12 +928,17 @@ static inline sp_int sp_int_clamp_range_ck(sp_int v, sp_Range r) {
 /* `:name`, or `:"name"` when the name needs quoting -- shares the
    name-string predicates in lib/sp_str.c with the hash-key short form. */
 static const char *sp_sym_inspect(sp_sym id) { if (id == (sp_sym)-1) return SPL("nil"); /* nilable-symbol sentinel */ return sp_sym_inspect_name(sp_sym_to_s(id)); }
+/* stdin line readers: omitted on a small-stack port (see SP_STACK_SCRATCH_MAX
+   in sp_types.h) -- a device has no stdin to read, and a shorter buffer would
+   silently split long lines. */
+#if SP_HAVE_LINE_READERS
 static const char*sp_gets(void){char buf[4096];if(!fgets(buf,sizeof(buf),stdin))return NULL;size_t l=strlen(buf);char*r=sp_str_alloc_raw(l+1);memcpy(r,buf,l+1);return r;}
 static sp_StrArray*sp_readlines(void){sp_StrArray*a=sp_StrArray_new();SP_GC_ROOT(a);char buf[4096];while(fgets(buf,sizeof(buf),stdin)){size_t l=strlen(buf);char*r=sp_str_alloc_raw(l+1);memcpy(r,buf,l+1);sp_StrArray_push(a,r);}return a;}
+#endif
 #ifdef SPINEL_EXT_HOST
 const char*sp_sprintf(const char*fmt,...);
 #else
-SP_TU_STATIC const char*sp_sprintf(const char*fmt,...){char _sp_tmp[4096];va_list ap;va_start(ap,fmt);int _sp_n=vsnprintf(_sp_tmp,sizeof(_sp_tmp),fmt,ap);va_end(ap);if(_sp_n<0)_sp_n=0;char*b=sp_str_alloc((size_t)_sp_n);if(_sp_n<(int)sizeof(_sp_tmp)){memcpy(b,_sp_tmp,(size_t)_sp_n);}
+SP_TU_STATIC const char*sp_sprintf(const char*fmt,...){char _sp_tmp[SP_SCRATCH(4096)];va_list ap;va_start(ap,fmt);int _sp_n=vsnprintf(_sp_tmp,sizeof(_sp_tmp),fmt,ap);va_end(ap);if(_sp_n<0)_sp_n=0;char*b=sp_str_alloc((size_t)_sp_n);if(_sp_n<(int)sizeof(_sp_tmp)){memcpy(b,_sp_tmp,(size_t)_sp_n);}
 else{/* result didn't fit the stack temp; re-render at full width (sp_str_alloc gives _sp_n bytes + NUL) so long string interpolations aren't truncated. re-arm the va_list rather than va_copy so the common fast path pays nothing */va_start(ap,fmt);vsnprintf(b,(size_t)_sp_n+1,fmt,ap);va_end(ap);}return b;}
 #endif
 /* Use a temp pointer for realloc so the original buffer is not leaked
@@ -10154,8 +10159,11 @@ static sp_StrArray *sp_backtrace_captured(void) {
 static sp_StrArray *sp_caller_now(void) {
 #if SP_BT_AVAILABLE
   if (!sp_bt_enabled) return sp_StrArray_new();
-  void *buf[256];
-  int n = backtrace(buf, 256);
+  /* One pointer per captured frame; a port with a small stack budget captures
+     fewer frames, which is what a shallower `caller` looks like anyway. */
+  enum { SP_CALLER_MAX = SP_SCRATCH(256 * sizeof(void *)) / sizeof(void *) };
+  void *buf[SP_CALLER_MAX];
+  int n = backtrace(buf, SP_CALLER_MAX);
   return sp_bt_format(buf, n);
 #else
   return sp_StrArray_new();
