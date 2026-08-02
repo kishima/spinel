@@ -174,6 +174,7 @@ SP_TU_STATIC SP_NORETURN SP_COLD void sp_raise_cls(const char *, const char *);
 SP_TU_STATIC SP_NORETURN void sp_raise_stop_iteration(sp_RbVal);
 SP_TU_STATIC int sp_signal_resolve(sp_RbVal);
 SP_TU_STATIC const char *sp_signal_signame(sp_int);
+SP_TU_STATIC void sp_exc_hw_read(int *, int *);
 #endif
 
 /* Every SP_BUILTIN_* cls_id must name exactly one kind. They are declared in
@@ -10030,6 +10031,7 @@ static void sp_tu_ctx_init(void) {
   _c->fn_raise_stop_iteration = sp_raise_stop_iteration;
   _c->fn_signal_resolve       = sp_signal_resolve;
   _c->fn_signal_signame       = sp_signal_signame;
+  _c->fn_exc_hw               = sp_exc_hw_read;
 }
 #endif
 
@@ -10147,8 +10149,20 @@ SP_NORETURN SP_COLD static void sp_stack_too_deep(void) {
    end of the array just as 65 nested begins do. Inside a fiber body, and inside
    a thread's, one slot is already spent on the frame the runtime arms around it
    (sp_exc_arm below), so 63 of the body's own is the last that fits. */
+#ifdef SP_MULTI_CTX
+/* High-waters of sp_exc_top / sp_catch_top since the program started. A port
+   sizes SP_EXC_STACK_MAX / SP_CATCH_STACK_MAX from the deepest *observed*
+   nesting plus margin; these are that observation, read by the host through
+   the instance (fn_exc_hw -> sp_instance_exc_hw). Kept only in the
+   SP_MULTI_CTX build, the one that has a reader. */
+static SP_TLS int sp_exc_hw = 0;
+static SP_TLS int sp_catch_hw = 0;
+#endif
 static inline void sp_exc_check_depth(void) {
   if (SP_UNLIKELY(sp_exc_top >= SP_EXC_STACK_MAX)) sp_stack_too_deep();
+#ifdef SP_MULTI_CTX
+  if (sp_exc_top + 1 > sp_exc_hw) sp_exc_hw = sp_exc_top + 1;
+#endif
   sp_poly_recur_mark[sp_exc_top] = sp_poly_recur_top;
 }
 /* ---- Native backtrace formatting (spinel --debug) ---------------------- */
@@ -10934,8 +10948,18 @@ static SP_TLS volatile int sp_catch_top = 0;
    recorded here rather than in the emitted arm. */
 static inline void sp_catch_check_depth(void) {
   if (SP_UNLIKELY(sp_catch_top >= SP_CATCH_STACK_MAX)) sp_stack_too_deep();
+#ifdef SP_MULTI_CTX
+  if (sp_catch_top + 1 > sp_catch_hw) sp_catch_hw = sp_catch_top + 1;
+#endif
   sp_catch_recur_mark[sp_catch_top] = sp_poly_recur_top;
 }
+#ifdef SP_MULTI_CTX
+/* Report both high-waters to the host (see sp_exc_hw above). */
+SP_TU_STATIC void sp_exc_hw_read(int *exc_hw, int *catch_hw) {
+  if (exc_hw)   *exc_hw = sp_exc_hw;
+  if (catch_hw) *catch_hw = sp_catch_hw;
+}
+#endif
 /* shared counter (not SP_TLS) so `catch { |tag| }` autotags are globally
    unique; see sp_brk_seq for the same shape */
 static sp_int sp_catch_seq = 0;
