@@ -1347,7 +1347,7 @@ int emit_iteration_stmt(Compiler *c, int id, Buf *b, int indent) {
        StopIteration falls through, any other exception re-raises. */
     int gcl = ++g_tmp;
     emit_indent(b, indent); buf_printf(b, "int _gcb%d = sp_gc_nroots; (void)_gcb%d;\n", gcl, gcl);
-    emit_indent(b, indent); buf_puts(b, "sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;\n");
+    emit_indent(b, indent); buf_puts(b, "sp_exc_push_check(); sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;\n");
     emit_indent(b, indent); buf_puts(b, "if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {\n");
     emit_indent(b, indent + 1); buf_puts(b, "for (;;) {\n");
     emit_loop_body(c, lbody, b, indent + 2);
