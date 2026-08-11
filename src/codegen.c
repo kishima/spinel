@@ -6696,6 +6696,16 @@ static const char *ivar_scalar_nil_init(TyKind t) {
    ("self.", "self->", "_t3.", "_t3->"); each assignment is bracketed by `lead`
    (indentation) and `term` (`;\n` for a statement, `;` inside a compound expr).
    A string ivar's NULL zero-pattern already reads as nil, so it is skipped. */
+/* Remember a class whose SP_POOL_DEFINE free list needs clearing when this
+   program is started again in a fresh instance (SP_MULTI_CTX). The list is a
+   file-scope static holding objects that lived in the previous instance's
+   heap; reusing one would hand out freed memory. */
+static void note_pool_class(const char *name)
+{
+  if (!g_pool_classes) g_pool_classes = (NameSet *)calloc(1, sizeof(NameSet));
+  nameset_add(g_pool_classes, name);
+}
+
 static void emit_ivar_nil_inits(Buf *b, ClassInfo *ci, const char *lv,
                                 const char *lead, const char *term) {
   for (int i = 0; i < ci->nivars; i++) {
@@ -6748,6 +6758,7 @@ void emit_class_new(Compiler *c, ClassInfo *ci, Buf *b) {
          at the .new site); the constructor just allocates blank and the inliner
          runs the body -- so skip the sp_X_initialize call for that case. */
       Scope *si = &c->scopes[sinit];
+      note_pool_class(ci->c_name);
       buf_printf(b, "SP_POOL_DEFINE(%s)\n", ci->c_name);
       buf_printf(b, "static sp_%s *sp_%s_new(", ci->c_name, ci->c_name);
       if (si->nparams > 0) {
@@ -6804,6 +6815,7 @@ void emit_class_new(Compiler *c, ClassInfo *ci, Buf *b) {
       goto struct_meta;
     }
     /* Struct constructor: one parameter per member, set the backing ivars. */
+    note_pool_class(ci->c_name);
     buf_printf(b, "SP_POOL_DEFINE(%s)\n", ci->c_name);
     buf_printf(b, "static sp_%s *sp_%s_new(", ci->c_name, ci->c_name);
     for (int i = 0; i < ci->nivars; i++) {
@@ -6993,7 +7005,10 @@ void emit_class_new(Compiler *c, ClassInfo *ci, Buf *b) {
      the pool instead of free()ing them, and sp_X_new reuses them -- this
      removes the malloc/free churn of allocation-heavy workloads. Exception
      subclasses use sp_exc_new_sub storage, so they are not pooled. */
-  if (!class_is_exc_subclass(c, cid)) buf_printf(b, "SP_POOL_DEFINE(%s)\n", ci->c_name);
+  if (!class_is_exc_subclass(c, cid)) {
+    note_pool_class(ci->c_name);
+    buf_printf(b, "SP_POOL_DEFINE(%s)\n", ci->c_name);
+  }
   int init_pf = ctor_init_proc_form(c, cid);
   buf_printf(b, "static sp_%s *sp_%s_new%s(", ci->c_name, ci->c_name, init_pf >= 0 ? "_noinit" : "");
   if (init >= 0 && (c->scopes[init].nparams > 0 || init_has_blk)) {
@@ -12211,49 +12226,73 @@ char *codegen_program(const NodeTable *nt) {
        (sp_re_mark_globals, installed by a constructor before main), so skip it
        and the sp_tu_init hook override entirely -- a trivial program carries
        neither. g_has_user_global_marks gates the override (see emit_regex_section). */
+    /* rs mirrors mk: every slot the collector marks is a slot that has to be
+       cleared when the program is started again in a fresh instance, or the
+       first collection of the new run marks the previous run's pointers.
+       Built in the same pass so the two lists cannot drift apart. */
     Buf mk; memset(&mk, 0, sizeof mk);
+    Buf rs; memset(&rs, 0, sizeof rs);
     for (int i = 0; i < c->ngvars; i++) {
       LocalVar *lv = &c->gvars[i];
       if (!is_scalar_ret(lv->type)) continue;
-      if (lv->type == TY_STRING) buf_printf(&mk, "  sp_mark_string(gv_%s);\n", lv->name);
-      else if (lv->type == TY_POLY) buf_printf(&mk, "  sp_mark_rbval(gv_%s);\n", lv->name);
-      else if (needs_root(lv->type)) buf_printf(&mk, "  if (gv_%s) sp_gc_mark((void *)gv_%s);\n", lv->name, lv->name);
+      if (lv->type == TY_STRING) { buf_printf(&mk, "  sp_mark_string(gv_%s);\n", lv->name);
+                                   buf_printf(&rs, "  gv_%s = NULL;\n", lv->name); }
+      else if (lv->type == TY_POLY) { buf_printf(&mk, "  sp_mark_rbval(gv_%s);\n", lv->name);
+                                      buf_printf(&rs, "  gv_%s = sp_box_nil();\n", lv->name); }
+      else if (needs_root(lv->type)) { buf_printf(&mk, "  if (gv_%s) sp_gc_mark((void *)gv_%s);\n", lv->name, lv->name);
+                                       buf_printf(&rs, "  gv_%s = NULL;\n", lv->name); }
     }
     for (int i = 0; i < c->nconsts; i++) {
       LocalVar *lv = &c->consts[i];
       if (!is_scalar_ret(lv->type)) continue;
-      if (lv->type == TY_STRING) buf_printf(&mk, "  sp_mark_string(cst_%s);\n", lv->name);
-      else if (lv->type == TY_POLY) buf_printf(&mk, "  sp_mark_rbval(cst_%s);\n", lv->name);
-      else if (needs_root(lv->type)) buf_printf(&mk, "  if (cst_%s) sp_gc_mark((void *)cst_%s);\n", lv->name, lv->name);
+      if (lv->type == TY_STRING) { buf_printf(&mk, "  sp_mark_string(cst_%s);\n", lv->name);
+                                   buf_printf(&rs, "  cst_%s = NULL;\n", lv->name); }
+      else if (lv->type == TY_POLY) { buf_printf(&mk, "  sp_mark_rbval(cst_%s);\n", lv->name);
+                                      buf_printf(&rs, "  cst_%s = sp_box_nil();\n", lv->name); }
+      else if (needs_root(lv->type)) { buf_printf(&mk, "  if (cst_%s) sp_gc_mark((void *)cst_%s);\n", lv->name, lv->name);
+                                       buf_printf(&rs, "  cst_%s = NULL;\n", lv->name); }
     }
     for (int i = 0; i < c->nclasses; i++) {
       ClassInfo *ci = &c->classes[i];
       for (int j = 0; j < ci->nivars; j++) {
         TyKind t = ci->ivar_types[j] == TY_UNKNOWN ? TY_INT : ci->ivar_types[j];
         const char *iv = iv_c(ci->ivars[j] + 1);
-        if (t == TY_STRING) buf_printf(&mk, "  sp_mark_string(civ_%s_%s);\n", ci->name, iv);
-        else if (t == TY_POLY) buf_printf(&mk, "  sp_mark_rbval(civ_%s_%s);\n", ci->name, iv);
-        else if (needs_root(t)) buf_printf(&mk, "  if (civ_%s_%s) sp_gc_mark((void *)civ_%s_%s);\n", ci->name, iv, ci->name, iv);
+        if (t == TY_STRING) { buf_printf(&mk, "  sp_mark_string(civ_%s_%s);\n", ci->name, iv);
+                              buf_printf(&rs, "  civ_%s_%s = NULL;\n", ci->name, iv); }
+        else if (t == TY_POLY) { buf_printf(&mk, "  sp_mark_rbval(civ_%s_%s);\n", ci->name, iv);
+                                 buf_printf(&rs, "  civ_%s_%s = sp_box_nil();\n", ci->name, iv); }
+        else if (needs_root(t)) { buf_printf(&mk, "  if (civ_%s_%s) sp_gc_mark((void *)civ_%s_%s);\n", ci->name, iv, ci->name, iv);
+                                  buf_printf(&rs, "  civ_%s_%s = NULL;\n", ci->name, iv); }
       }
-      for (int j = 0; j < ci->nsg_readers; j++)
+      for (int j = 0; j < ci->nsg_readers; j++) {
         buf_printf(&mk, "  sp_mark_rbval(sg_%s_%s);\n", ci->name, ci->sg_readers[j]);
+        buf_printf(&rs, "  sg_%s_%s = sp_box_nil();\n", ci->name, ci->sg_readers[j]);
+      }
       /* class variables are file-scope statics too; one that alone holds an
          object (`@@a |= [x]` rebinding it) was freed under it (#4864) */
       for (int j = 0; j < ci->ncvars; j++) {
         TyKind t = ci->cvar_types[j] == TY_UNKNOWN ? TY_INT : ci->cvar_types[j];
         const char *cv = ci->cvars[j] + 2;
-        if (t == TY_STRING) buf_printf(&mk, "  sp_mark_string(cvar_%s_%s);\n", ci->name, cv);
-        else if (t == TY_POLY) buf_printf(&mk, "  sp_mark_rbval(cvar_%s_%s);\n", ci->name, cv);
-        else if (needs_root(t)) buf_printf(&mk, "  if (cvar_%s_%s) sp_gc_mark((void *)cvar_%s_%s);\n", ci->name, cv, ci->name, cv);
+        if (t == TY_STRING) { buf_printf(&mk, "  sp_mark_string(cvar_%s_%s);\n", ci->name, cv);
+                              buf_printf(&rs, "  cvar_%s_%s = NULL;\n", ci->name, cv); }
+        else if (t == TY_POLY) { buf_printf(&mk, "  sp_mark_rbval(cvar_%s_%s);\n", ci->name, cv);
+                                 buf_printf(&rs, "  cvar_%s_%s = sp_box_nil();\n", ci->name, cv); }
+        else if (needs_root(t)) { buf_printf(&mk, "  if (cvar_%s_%s) sp_gc_mark((void *)cvar_%s_%s);\n", ci->name, cv, ci->name, cv);
+                                  buf_printf(&rs, "  cvar_%s_%s = NULL;\n", ci->name, cv); }
       }
     }
     /* $0 and the proc calling convention's side channel are marked by the
        runtime's own sp_re_mark_globals (lib/spinel_rt.h), so a program with
        none of the globals above carries no marker and no startup hook. */
-    if (g_has_dyn_syms) buf_puts(&mk, "  sp_mark_dyn_syms();\n");
-    if (g_bigl_n)
+    if (g_has_dyn_syms) { buf_puts(&mk, "  sp_mark_dyn_syms();\n");
+                          buf_puts(&rs, "  sp_ndyn = 0;\n"); }
+    if (g_bigl_n) {
       buf_printf(&mk, "  for (int _i = 0; _i < %d; _i++) if (sp_bigl[_i]) sp_gc_mark((void *)sp_bigl[_i]);\n",
                  g_bigl_n);
+      buf_printf(&rs, "  for (int _i = 0; _i < %d; _i++) sp_bigl[_i] = NULL;\n", g_bigl_n);
+    }
+    free(g_tu_reset_globals);
+    g_tu_reset_globals = rs.p;   /* emitted after the class bodies */
     g_has_user_global_marks = (mk.p && mk.len > 0);
     if (g_has_user_global_marks) {
       buf_puts(&b, "static void sp_mark_user_globals(void) {\n");
@@ -12386,9 +12425,39 @@ char *codegen_program(const NodeTable *nt) {
     }
   }
 
+  /* Per-instance reset of this TU's file-scope statics. Only SP_MULTI_CTX
+     builds can run a program twice in one process; there, the constants, class
+     ivars and per-class object pools all still hold the previous instance's
+     pointers when the second run starts. The entry re-assigns the constants,
+     but only in source order and only after the GC's globals hook is already
+     installed, so a collection partway through the entry would mark whatever
+     had not been reached yet. Clearing them first makes that window safe, and
+     clearing the pools stops sp_X_new handing out an object from a heap that
+     no longer exists. */
+  {
+    int has_reset = (g_tu_reset_globals && g_tu_reset_globals[0]) ||
+                    (g_pool_classes && g_pool_classes->n > 0);
+    if (has_reset) {
+      buf_puts(body, "#ifdef SP_MULTI_CTX\n");
+      buf_puts(body, "static void sp_reset_tu_statics(void) {\n");
+      if (g_tu_reset_globals && g_tu_reset_globals[0]) buf_puts(body, g_tu_reset_globals);
+      if (g_pool_classes) {
+        for (int i = 0; i < g_pool_classes->n; i++) {
+          buf_printf(body, "  sp_%s_pool_head = NULL; sp_%s_pool_count = 0;\n",
+                     g_pool_classes->v[i], g_pool_classes->v[i]);
+        }
+      }
+      buf_puts(body, "}\n#endif\n\n");
+    }
+    g_tu_has_reset = has_reset;
+  }
+
   size_t main_frame_ins = 0;
-  /* every entry form installs the per-instance TU hooks first (see below) */
-#define SP_TU_CTX_INIT_CALL "#ifdef SP_MULTI_CTX\n    sp_tu_ctx_init();\n#endif\n"
+  /* every entry form installs the per-instance TU hooks first, then clears
+     the TU's file-scope statics (see above), all under SP_MULTI_CTX */
+#define SP_TU_CTX_INIT_CALL (g_tu_has_reset \
+    ? "#ifdef SP_MULTI_CTX\n    sp_tu_ctx_init();\n    sp_reset_tu_statics();\n#endif\n" \
+    : "#ifdef SP_MULTI_CTX\n    sp_tu_ctx_init();\n#endif\n")
   if (g_ext_init_name) {
     /* Layer-1 extension emission (ext-design.md): the toplevel body brackets
        into the host-callable init function instead of main, and a tiny

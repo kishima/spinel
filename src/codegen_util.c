@@ -885,6 +885,12 @@ int bigl_intern(const char *v) {
   g_bigl_val[g_bigl_n] = strdup(v);
   return g_bigl_n++;
 }
+/* Per-instance reset of this TU's file-scope statics (SP_MULTI_CTX). Built
+   alongside the GC mark list so the two cannot drift; emitted after the class
+   bodies, once the pooled classes are known. */
+char *g_tu_reset_globals = NULL;
+NameSet *g_pool_classes = NULL;
+int g_tu_has_reset = 0;
 int g_uses_symbols = 0;
 int g_uses_marshal = 0;
 int g_emit_sym_rt = 0;

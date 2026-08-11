@@ -404,6 +404,9 @@ int stmts_diverge(Compiler *c, int stmts);
 extern char **g_bigl_val;
 extern int g_bigl_n;
 int bigl_intern(const char *v);
+extern char *g_tu_reset_globals;
+extern NameSet *g_pool_classes;
+extern int g_tu_has_reset;
 /* Whole-program feature presence, computed once before main is emitted, so the
    main() prologue can skip setup a trivial program never needs:
    g_uses_symbols -> sp_tu_init sets sp_sym_name_fn; g_uses_regex -> sp_tu_init
