@@ -261,6 +261,9 @@ extern int g_needs_class_machinery;
    runtime default (sp_re_mark_globals, installed by a constructor before main),
    so it -- and the sp_re_init hook override -- are skipped. */
 extern int g_has_user_global_marks;
+extern char *g_tu_reset_globals;
+extern NameSet *g_pool_classes;
+extern int g_tu_has_reset;
 /* Whole-program feature presence, computed once before main is emitted, so the
    main() prologue can skip setup a trivial program never needs:
    g_uses_symbols -> sp_re_init sets sp_sym_name_fn; g_uses_regex -> sp_re_init
