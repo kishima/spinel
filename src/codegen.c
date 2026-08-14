@@ -7,6 +7,11 @@
 int g_no_main = 0;
 const char *g_entry_name = "spinel_program_main";
 
+/* `--persistent-statics`: clear this TU's file-scope statics once per instance
+   instead of once per entry call, so a library entry's objects survive between
+   calls. See codegen.h for what that trades away. */
+int g_persistent_statics = 0;
+
 /* A reference-backed builtin (IO/Fiber/Thread/Queue/Mutex/ConditionVariable/
    Enumerator/Exception/Proc/Method) is a genuinely nilable C pointer: an unset
    ivar, a `return nil` method, or a cache miss yields NULL. It must box via
@@ -10946,6 +10951,26 @@ static void ext_generate_cruby_shim(Compiler *c) {
 }
 
 
+/* The head of every entry form under SP_MULTI_CTX: install this TU's
+   per-instance hooks (sp_tu_ctx_init), then clear its file-scope statics
+   (sp_reset_tu_statics, when the program has any). --persistent-statics moves
+   the clear from per-call to per-instance: the program's globals, constants,
+   class ivar caches and object pools stay put between entry calls, so a
+   library entry can cache what it built (a lookup table, an open handle)
+   instead of building it again every time. The flag lives in the instance,
+   zeroed by sp_instance_create, so a fresh instance still starts from a clean
+   program. Stripped by the preprocessor in the default build. */
+static void emit_tu_ctx_init(Buf *body) {
+  buf_puts(body, "#ifdef SP_MULTI_CTX\n    sp_tu_ctx_init();\n");
+  if (g_tu_has_reset) {
+    if (g_persistent_statics)
+      buf_puts(body, "    if (!SP_CTX_STATICS_INITED()) { sp_reset_tu_statics(); SP_CTX_MARK_STATICS_INITED(); }\n");
+    else
+      buf_puts(body, "    sp_reset_tu_statics();\n");
+  }
+  buf_puts(body, "#endif\n");
+}
+
 char *codegen_program(const NodeTable *nt) {
   Compiler *c = comp_new(nt);
   analyze_program(c);
@@ -12455,9 +12480,6 @@ char *codegen_program(const NodeTable *nt) {
   size_t main_frame_ins = 0;
   /* every entry form installs the per-instance TU hooks first, then clears
      the TU's file-scope statics (see above), all under SP_MULTI_CTX */
-#define SP_TU_CTX_INIT_CALL (g_tu_has_reset \
-    ? "#ifdef SP_MULTI_CTX\n    sp_tu_ctx_init();\n    sp_reset_tu_statics();\n#endif\n" \
-    : "#ifdef SP_MULTI_CTX\n    sp_tu_ctx_init();\n#endif\n")
   if (g_ext_init_name) {
     /* Layer-1 extension emission (ext-design.md): the toplevel body brackets
        into the host-callable init function instead of main, and a tiny
@@ -12477,7 +12499,7 @@ char *codegen_program(const NodeTable *nt) {
     buf_printf(body, "void %s(void){\n", g_ext_init_name);
     buf_puts(body, "    SP_GC_SAVE();\n");
     main_frame_ins = body->len;
-    buf_puts(body, SP_TU_CTX_INIT_CALL);
+    emit_tu_ctx_init(body);
     if (g_re_init_needed) buf_puts(body, "    sp_tu_init();\n");
     if (g_uses_threads) buf_puts(body, "    sp_sched_init();\n");
     if (g_uses_program_name) buf_puts(body, "    sp_program_name = sp_str_empty;\n");
@@ -12491,7 +12513,7 @@ char *codegen_program(const NodeTable *nt) {
     buf_printf(body, "int %s(void){\n", g_entry_name);
     buf_puts(body, "    SP_GC_SAVE();\n");
     main_frame_ins = body->len;
-    buf_puts(body, SP_TU_CTX_INIT_CALL);
+    emit_tu_ctx_init(body);
     if (g_re_init_needed) buf_puts(body, "    sp_tu_init();\n");
     if (g_uses_threads) buf_puts(body, "    sp_sched_init();\n");
     if (g_uses_program_name) buf_puts(body, "    sp_program_name = sp_str_empty;\n");
@@ -12525,7 +12547,7 @@ char *codegen_program(const NodeTable *nt) {
      fields (no current instance exists then). Install them here instead, once
      the host has made this instance current, before sp_tu_init layers on the
      symbol/regex/user-globals overrides. Stripped in the default build. */
-  buf_puts(body, SP_TU_CTX_INIT_CALL);
+  emit_tu_ctx_init(body);
   if (g_re_init_needed) buf_puts(body, "    sp_tu_init();\n");
   /* Adopt the main thread and chain the scheduler's GC root hook. Placed after
      sp_tu_init so it chains whatever globals hook that installed. */

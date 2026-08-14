@@ -358,6 +358,9 @@ static void usage(void) {
     "  --force     with -c, overwrite an -o path spinel did not write\n"
     "  --no-main   Emit `int <entry>(void)` instead of main(); implies -c (library mode)\n"
     "  --entry NAME  Entry function name for --no-main (default: spinel_program_main)\n"
+    "  --persistent-statics  Keep the program's globals/constants/class-ivar caches\n"
+    "              between entry calls, clearing them once per instance instead of\n"
+    "              once per call (library mode; one program per instance only)\n"
     "  --inject FILE  Append a raw C file after the generated unit\n"
     "  -I DIR      Add a feature search root for `require \"name\"` (like ruby -I)\n"
     "  --require-gate  Refuse an unresolvable require instead of warning\n"
@@ -507,6 +510,7 @@ int main(int argc, char **argv) {
     /* Library mode: emit `int <entry>(void)` instead of main(); imply -c since
        the result is not a standalone runnable binary. --entry sets the name. */
     else if (sp_streq(a, "--no-main"))     { g_no_main = 1; c_only = 1; i++; }
+    else if (sp_streq(a, "--persistent-statics")) { g_persistent_statics = 1; i++; }
     else if (!strncmp(a, "--entry=", 8))   { g_entry_name = a + 8; i++; }
     else if (sp_streq(a, "--entry"))       { if (++i < argc) g_entry_name = argv[i]; i++; }
     /* Splice a raw C file after the generated translation unit (escape hatch to
