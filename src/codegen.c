@@ -7,6 +7,11 @@
 int g_no_main = 0;
 const char *g_entry_name = "spinel_program_main";
 
+/* `--persistent-statics`: clear this TU's file-scope statics once per instance
+   instead of once per entry call, so a library entry's objects survive between
+   calls. See codegen.h for what that trades away. */
+int g_persistent_statics = 0;
+
 /* A reference-backed builtin (IO/Fiber/Thread/Queue/Mutex/ConditionVariable/
    Enumerator/Exception/Proc/Method) is a genuinely nilable C pointer: an unset
    ivar, a `return nil` method, or a cache miss yields NULL. It must box via
@@ -5675,7 +5680,18 @@ char *codegen_program(const NodeTable *nt) {
      the host has made this instance current, before sp_re_init layers on the
      symbol/regex/user-globals overrides. Stripped in the default build. */
   buf_puts(body, "#ifdef SP_MULTI_CTX\n    sp_tu_ctx_init();\n");
-  if (g_tu_has_reset) buf_puts(body, "    sp_reset_tu_statics();\n");
+  if (g_tu_has_reset) {
+    /* --persistent-statics moves the clear from per-call to per-instance: the
+       program's globals, constants, class ivar caches and object pools stay
+       put between entry calls, so a library entry can cache what it built
+       (a lookup table, an open handle) instead of building it again every
+       time. The flag lives in the instance, zeroed by sp_instance_create, so
+       a fresh instance still starts from a clean program. */
+    if (g_persistent_statics)
+      buf_puts(body, "    if (!SP_CTX_STATICS_INITED()) { sp_reset_tu_statics(); SP_CTX_MARK_STATICS_INITED(); }\n");
+    else
+      buf_puts(body, "    sp_reset_tu_statics();\n");
+  }
   buf_puts(body, "#endif\n");
   if (g_re_init_needed) buf_puts(body, "    sp_re_init();\n");
   /* Adopt the main thread and chain the scheduler's GC root hook. Placed after
