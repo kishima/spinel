@@ -11274,7 +11274,9 @@ char *codegen_program(const NodeTable *nt) {
     }
     /* dynamic intern pool: symbols minted at runtime (Symbol#upcase,
        :"interp", String#to_sym) get ids >= the static count. */
-    buf_puts(&b, "static const char *sp_dyn_syms[SP_DYN_SYMS_MAX]; static int sp_ndyn = 0;\n");
+    /* SP_TU_BSS: large, cold and per-TU, so a target short of internal memory
+       can place it elsewhere (sp_types.h). Empty by default. */
+    buf_puts(&b, "SP_TU_BSS static const char *sp_dyn_syms[SP_DYN_SYMS_MAX]; static int sp_ndyn = 0;\n");
     /* Those entries are string-heap strings (sp_str_dup_external) held only by
        this static array, which the collector does not walk: the string sweep
        freed them and the next intern compared against a corpse. Emitted here,
