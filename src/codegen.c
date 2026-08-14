@@ -4886,7 +4886,9 @@ char *codegen_program(const NodeTable *nt) {
     }
     /* dynamic intern pool: symbols minted at runtime (Symbol#upcase,
        :"interp", String#to_sym) get ids >= the static count. */
-    buf_puts(&b, "static const char *sp_dyn_syms[SP_DYN_SYMS_MAX]; static int sp_ndyn = 0;\n");
+    /* SP_TU_BSS: large, cold and per-TU, so a target short of internal memory
+       can place it elsewhere (sp_types.h). Empty by default. */
+    buf_puts(&b, "SP_TU_BSS static const char *sp_dyn_syms[SP_DYN_SYMS_MAX]; static int sp_ndyn = 0;\n");
     buf_printf(&b, "static const char *sp_sym_to_s(sp_sym id){"
                    "if(id>=0&&id<%d)return %s;"
                    "if(id>=%d&&id<%d+sp_ndyn)return sp_dyn_syms[id-%d];"
