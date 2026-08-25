@@ -98,7 +98,45 @@ static int bare_rescue_spec_cid(Compiler *c, int rescue_id) {
    table). Idempotent -- safe to run again after the transplant clones exist so
    their `e` is typed too, instead of being left poly (which would box a caught
    sp_Exception* into an sp_RbVal slot and fail to compile). */
+/* Propagate ivar types up the inheritance chain: a base-class method runs on
+   subclass instances, so an ivar it reads must carry the union of every
+   subclass's assignments. Without this, an abstract base whose @x is only set
+   to nil/placeholder there sees the wrong type when it calls `@x.foo`, even
+   though every concrete subclass assigns @x a real object.
+
+   It also keeps the generated structs cast-compatible. A base method is called
+   as `sp_Base_m((sp_Base *)self)`, which is only sound while sp_Base_s is a
+   common initial sequence of every subclass struct. The same ivar held as
+   `sp_PolyArray *` in the base and `sp_RbVal` in the subclass has different
+   widths, so every field after it sits at a different offset and the base's
+   writes land on the wrong members (silently -- the reader just sees garbage).
+
+   Monotonic (unify only widens), so callers iterate to a fixpoint. */
+static int propagate_ivars_up(Compiler *c) {
+  int prop_changed = 0;
+  for (int k = 0; k < c->nclasses; k++) {
+    ClassInfo *kc = &c->classes[k];
+    for (int iv = 0; iv < kc->nivars; iv++) {
+      TyKind kt = kc->ivar_types[iv];
+      if (kt == TY_UNKNOWN) continue;
+      const char *ivn = kc->ivars[iv];
+      for (int a = kc->parent; a >= 0; a = c->classes[a].parent) {
+        int ai = comp_ivar_index(&c->classes[a], ivn);
+        if (ai < 0) continue;
+        if (class_ivar_pinned(&c->classes[a], ivn)) continue;  /* --rbs seed pins it */
+        TyKind merged = ty_unify(c->classes[a].ivar_types[ai], kt);
+        sp_ivwatch(ivn[0] == '@' ? ivn + 1 : ivn, "inherited_merge", c->classes[a].ivar_types[ai], merged);
+        if (merged != c->classes[a].ivar_types[ai]) {
+          c->classes[a].ivar_types[ai] = merged; prop_changed = 1;
+        }
+      }
+    }
+  }
+  return prop_changed;
+}
+
 static void specialize_rescue_vars(Compiler *c) {
+
   int cap = 0, rn = 0;
   struct { int id; const char *nm; Scope *vsc; int spec; } *arms = NULL;
   for (int id = 0; id < c->nt->count; id++) {
@@ -6475,34 +6513,9 @@ void analyze_program(Compiler *c) {
   }
 
 
-  /* Propagate ivar types up the inheritance chain: a base-class method runs on
-     subclass instances, so an ivar it reads must carry the union of every
-     subclass's assignments. Without this, an abstract base whose @x is only set
-     to nil/placeholder there sees the wrong type when it calls `@x.foo`, even
-     though every concrete subclass assigns @x a real object. Monotonic (unify
-     only widens), so iterate to a fixpoint. */
-  for (int iter = 0; iter < 16; iter++) {
-    int prop_changed = 0;
-    for (int k = 0; k < c->nclasses; k++) {
-      ClassInfo *kc = &c->classes[k];
-      for (int iv = 0; iv < kc->nivars; iv++) {
-        TyKind kt = kc->ivar_types[iv];
-        if (kt == TY_UNKNOWN) continue;
-        const char *ivn = kc->ivars[iv];
-        for (int a = kc->parent; a >= 0; a = c->classes[a].parent) {
-          int ai = comp_ivar_index(&c->classes[a], ivn);
-          if (ai < 0) continue;
-          if (class_ivar_pinned(&c->classes[a], ivn)) continue;  /* --rbs seed pins it */
-          TyKind merged = ty_unify(c->classes[a].ivar_types[ai], kt);
-          sp_ivwatch(ivn[0] == '@' ? ivn + 1 : ivn, "inherited_merge", c->classes[a].ivar_types[ai], merged);
-          if (merged != c->classes[a].ivar_types[ai]) {
-            c->classes[a].ivar_types[ai] = merged; prop_changed = 1;
-          }
-        }
-      }
-    }
-    if (!prop_changed) break;
-  }
+  /* Widen inherited ivars to the union across the hierarchy (see
+     propagate_ivars_up). Iterate to a fixpoint; unify only widens. */
+  for (int iter = 0; iter < 16; iter++) if (!propagate_ivars_up(c)) break;
 
   /* Re-run param binding now that method(:sym) targets are int-typed (step 1
      above) and ivars carry their inheritance-unioned types: a base method
@@ -6640,6 +6653,12 @@ void analyze_program(Compiler *c) {
   for (int it = 0; it < 8; it++) {
     int ch = infer_ivar_types(c);
     ch |= infer_inherited_ivars(c);
+    /* ... and back up, so a subclass ivar widened by the re-run above
+       carries into the base. Without this the base struct stops being a
+       common initial sequence of the subclass struct and every inherited
+       method writing through the `(sp_Base *)self` cast corrupts the
+       object (fmruby's FmrbApp/EditorApp @attached_uis). */
+    ch |= propagate_ivars_up(c);
     /* An ivar that widens here (e.g. `@query_log`, whose heterogeneous `= []` /
        `.push(str)` / `= prev` writes merge to poly) must carry its new type into
        any local that merely READS it (`prev = @query_log`). Widen such a local
