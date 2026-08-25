@@ -2698,6 +2698,65 @@ const char *exc_builtin_parent(Compiler *c, int ci) {
   return "StandardError";
 }
 
+/* The C type a struct field gets for an ivar slot (mirrors emit_class_struct:
+   void/nil slots have no storage type and become poly; unresolved becomes int). */
+static TyKind ivar_field_type(TyKind t) {
+  if (t == TY_VOID || t == TY_NIL) return TY_POLY;
+  if (t == TY_UNKNOWN) return TY_INT;
+  return t;
+}
+
+/* Inherited methods are emitted once and called through a cast to the defining
+   class (`sp_Base_m((sp_Base *)self)`), so sp_Base_s must be a common initial
+   sequence of every subclass struct -- same ivars, same order, same C types.
+   inherit_members and the ivar type fixpoints are supposed to guarantee that,
+   but a single inference path that widens a subclass slot without carrying the
+   new type back to the base is enough to break it, and the damage is silent:
+   the base's writes land on whatever member now sits at that offset and the
+   subclass reads garbage, far from the cause (fmruby's FmrbApp/EditorApp
+   @attached_uis, where the base held sp_PolyArray * and the subclass sp_RbVal).
+   Check the invariant here rather than emit C that corrupts objects. */
+static void check_class_layout_compat(Compiler *c) {
+  for (int i = 0; i < c->nclasses; i++) {
+    ClassInfo *ci = &c->classes[i];
+    if (ci->is_native_class || is_builtin_reopen(ci->name)) continue;
+    int is_exc = class_is_exc_subclass(c, i);
+    for (int a = ci->parent; a >= 0; a = c->classes[a].parent) {
+      ClassInfo *pc = &c->classes[a];
+      if (pc->is_native_class || is_builtin_reopen(pc->name)) continue;
+      /* An exception subclass keeps the sp_Exception header; only a base that
+         is laid out the same way can be cast to. */
+      if (class_is_exc_subclass(c, a) != is_exc) continue;
+      if (pc->nivars > ci->nivars) {
+        fprintf(stderr,
+                "spinel: internal error: %s has %d ivars but its ancestor %s has %d; "
+                "the base struct must be a common initial sequence of the subclass struct\n",
+                ci->name, ci->nivars, pc->name, pc->nivars);
+        exit(1);
+      }
+      for (int k = 0; k < pc->nivars; k++) {
+        if (!sp_streq(pc->ivars[k], ci->ivars[k])) {
+          fprintf(stderr,
+                  "spinel: internal error: ivar slot %d is %s in %s but %s in its ancestor %s; "
+                  "inherited methods write through a (sp_%s *) cast, so the order must match\n",
+                  k, ci->ivars[k], ci->name, pc->ivars[k], pc->name, pc->c_name);
+          exit(1);
+        }
+        TyKind pt = ivar_field_type(pc->ivar_types[k]);
+        TyKind ct = ivar_field_type(ci->ivar_types[k]);
+        if (pt != ct) {
+          fprintf(stderr,
+                  "spinel: internal error: %s is %s in %s but %s in its ancestor %s; "
+                  "the differing field widths shift every later member, and inherited "
+                  "methods writing through the (sp_%s *) cast would corrupt the object\n",
+                  ci->ivars[k], ty_name(ct), ci->name, ty_name(pt), pc->name, pc->c_name);
+          exit(1);
+        }
+      }
+    }
+  }
+}
+
 void emit_class_struct(Compiler *c, ClassInfo *ci, Buf *b) {
   /* Native (C-backed) class: the package owns the struct; the generated TU has
      only its forward-decl (`typedef struct sp_X_s sp_X;`) and holds pointers. */
@@ -5326,6 +5385,7 @@ char *codegen_program(const NodeTable *nt) {
     else
       buf_printf(&b, "typedef struct sp_%s_s sp_%s;\n", c->classes[i].c_name, c->classes[i].c_name);
   }
+  check_class_layout_compat(c);
   for (int i = 0; i < c->nclasses; i++)
     if (!is_builtin_reopen(c->classes[i].name))
       emit_class_struct(c, &c->classes[i], &b);
