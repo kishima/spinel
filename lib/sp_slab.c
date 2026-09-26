@@ -73,15 +73,35 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+/* SP_NO_SLAB compiles the slab out: sp_slab_on is 0 from the start and the
+   reservation is never made, so sp_slab_owns() is false for every pointer and
+   every block comes from malloc -- what SPINEL_GC_SLAB=0 chooses at run time,
+   without the address-space reservation (mmap), the page advice (madvise) or
+   the malloc tuning (mallopt) behind it. The allocator entry points in this
+   file (sp_gc_alloc and the sp_slab_alloc* family) stay, on their malloc
+   path; the chunk machinery stays compiled but is never reached. The default
+   build does not define it and is unchanged.
+
+   A port with no MMU, or whose allocation must go through a per-instance
+   backend, wants exactly this: SP_MULTI_CTX implies it (the instance pool
+   owns every allocation, and one process-wide reservation shared by the
+   instances would defeat that), and so does SP_NO_MMAN. */
+#if (defined(SP_MULTI_CTX) || defined(SP_NO_MMAN)) && !defined(SP_NO_SLAB)
+#define SP_NO_SLAB
+#endif
+#ifndef SP_NO_SLAB
 #include <sys/mman.h>
+#endif
 #include <time.h>
 #include "sp_gc.h"
 #include "sp_alloc.h"   /* sp_gc_alloc is here: the collector's bookkeeping around the claim */
+#ifndef SP_NO_SLAB
 #ifndef MAP_ANONYMOUS
 #define MAP_ANONYMOUS MAP_ANON
 #endif
 #ifndef MAP_NORESERVE
 #define MAP_NORESERVE 0
+#endif
 #endif
 
 #define SP_SLAB_ARENA   ((size_t)4 << 20)
@@ -189,7 +209,11 @@ uintptr_t sp_slab_base = 0;   /* the reservation (read inline by sp_slab_owns) *
 static uintptr_t sp_slab_brk = 0;   /* how much of it is in use */
 size_t sp_slab_cap = 0;
 static sp_slab_chunk *sp_slab_empty = NULL;   /* chunks holding no class */
+#ifdef SP_NO_SLAB
+int sp_slab_on = 0;                           /* compiled out: never decided, never on */
+#else
 int sp_slab_on = -1;                          /* decided once from the environment */
+#endif
 /* The parity of the epoch new allocations join. The collector flips it under
    the barrier (sp_slab_epoch_flip), where no mutator runs. */
 unsigned sp_slab_epoch = 0;
@@ -241,6 +265,7 @@ static inline void bm_store(uint64_t *p, uint64_t v) { *p = v; }
    address arithmetic. Mapped twice the size and trimmed to the aligned
    middle; the pages are untouched until a chunk is carved, so the size costs
    nothing but address space. */
+#ifndef SP_NO_SLAB
 static void sp_slab_reserve(void) {
 #ifdef __wasi__
   /* wasm has one linear memory that only grows: nothing to reserve, trim or
@@ -280,6 +305,7 @@ static void sp_slab_reserve(void) {
   }
   sp_slab_on = 0;   /* no range at all: every block is a malloc */
 }
+#endif
 
 /* Is jemalloc the process's malloc? Its thread caches did what the free
    list did, and measured beside them the free-list slab was a loss
@@ -294,6 +320,7 @@ static void sp_slab_reserve(void) {
    SPINEL_GC_SLAB=0. Detection is jemalloc's own mallctl symbol, resolved by
    the dynamic linker from a linked or preloaded jemalloc; nothing else
    defines it. */
+#ifndef SP_NO_SLAB
 #if defined(__APPLE__)
 #include <dlfcn.h>
 static int sp_slab_jemalloc_present(void) { return dlsym(RTLD_DEFAULT, "mallctl") != NULL; }
@@ -346,6 +373,7 @@ static void sp_slab_init(void) {
   (void)sp_slab_jemalloc_present;
   if (sp_slab_on) sp_slab_reserve();
 }
+#endif
 
 static inline sp_slab_chunk *sp_slab_chunk_of(const void *p) {
   uintptr_t a = (uintptr_t)p;
@@ -382,10 +410,10 @@ static int sp_slab_next_arena(void) {
   if (sp_slab_brk + SP_SLAB_ARENA > sp_slab_base + sp_slab_cap) return 0;
   sp_slab_arena *ar = (sp_slab_arena *)sp_slab_brk;
   sp_slab_brk += SP_SLAB_ARENA;
-#ifdef MADV_DODUMP
+#if defined(MADV_DODUMP) && !defined(SP_NO_SLAB)
   madvise((void *)ar, SP_SLAB_ARENA, MADV_DODUMP);   /* this arena holds objects: dump it */
 #endif
-#ifdef MADV_HUGEPAGE
+#if defined(MADV_HUGEPAGE) && !defined(SP_NO_SLAB)
   /* An arena is 4 MB, aligned: two huge pages where the kernel offers them
      (transparent_hugepage=madvise, the common setting). The program then
      faults an arena in twice instead of a thousand times, and walks it on
@@ -589,7 +617,9 @@ static inline __attribute__((always_inline)) void sp_slab_zero_small(void *p, un
    current chunk, else refill; past the largest class, or with the slab
    off, malloc. */
 static SP_NOINLINE void *sp_slab_alloc_slow(size_t need, int payload, int zero) {
+#ifndef SP_NO_SLAB
   if (__builtin_expect(sp_slab_on < 0, 0)) sp_slab_init();
+#endif
   if (sp_slab_on && need <= SP_SLAB_MAX) {
     int cls = sp_slab_cls_of[(need + 15) >> 4];
     unsigned csize = sp_slab_csize[cls];
@@ -807,9 +837,13 @@ extern int sp_gc_cycle;
 void sp_slab_note(const void *p, int what) {
   if (!sp_slab_verify_on || !sp_slab_owns(p)) return;
   if (!sp_slab_shadow) {
+#ifdef SP_NO_SLAB
+    return;
+#else
     void *m = mmap(NULL, (sp_slab_cap >> 5) * sizeof(sp_slab_shadow_rec), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
     if (m == MAP_FAILED) return;
     sp_slab_shadow = (sp_slab_shadow_rec *)m;
+#endif
   }
   sp_slab_shadow_rec *sh = SP_SHADOW(p);
   if (!sh) return;
@@ -1254,7 +1288,9 @@ void sp_slab_release_worker(int wid) {
         }
         if (touched) {
           double mt0 = sp_gc_ph_on ? sp_slab_now() : 0;
+#ifndef SP_NO_SLAB
           madvise(lo, (size_t)(hi - lo), MADV_DONTNEED);
+#endif
           if (sp_gc_ph_on) { sp_slab_rel_madv++; sp_slab_rel_madv_t += sp_slab_now() - mt0; }
         }
         sp_slab_chunk *nx = run_end->next_avail;
