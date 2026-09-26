@@ -1441,8 +1441,12 @@ static void sp_mark_at_exit_hooks(void);
    always live and its call to sp_mark_fiber_root_storage would be an
    undefined reference at link time. */
 /* External linkage: lib/sp_gc.c's sp_gc_mark_all reaches this by name. */
+#ifndef SP_MULTI_CTX  /* per-ctx macro under SP_MULTI_CTX (sp_ctx.h) */
 extern SP_TLS sp_RbVal _sp_proc_poly_args[SP_PROC_ARG_SLOTS];   /* the proc calling convention's side channel, defined below */
+#endif
+#ifndef SP_MULTI_CTX  /* per-ctx macro under SP_MULTI_CTX (sp_ctx.h) */
 extern SP_TLS sp_RbVal _sp_proc_poly_ret;
+#endif
 static void sp_re_mark_globals(void) {
   /* The sub-markers below are static and inline away, so a fault in one of
      them reports as this frame with nothing to distinguish them. Under verify,
@@ -1703,7 +1707,9 @@ static const char *sp_re_source_str(void *pat) {
 }
 sp_int sp_re_options(void *pat);
 sp_bool sp_re_eq(void *a, void *b);
+#ifndef SP_MULTI_CTX  /* per-ctx macro under SP_MULTI_CTX (sp_ctx.h) */
 extern SP_TLS const mrb_regexp_pattern *sp_re_last_pat;
+#endif
 sp_bool sp_re_casefold_p(void *pat);
 uint32_t sp_re_raw_flags(void *pat);
 uint32_t sp_re_opts_to_flags(sp_int o);

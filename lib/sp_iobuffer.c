@@ -20,8 +20,12 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 
+#ifndef SP_MULTI_CTX  /* per-ctx macro under SP_MULTI_CTX (sp_ctx.h) */
 extern const char *sp_sprintf(const char *fmt, ...);
+#endif
+#ifndef SP_MULTI_CTX  /* per-ctx macro under SP_MULTI_CTX (sp_ctx.h) */
 extern SP_NORETURN void sp_raise_cls(const char *cls, const char *msg);
+#endif
 
 /* sp_bigint.c helpers (sp_bigint.h is mruby-shim territory; the u64 pair is
    added beside the other serialization helpers there) */

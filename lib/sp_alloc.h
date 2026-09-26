@@ -20,7 +20,9 @@
 #include <stdio.h>      /* snprintf for the int/float formatters below */
 #include <math.h>       /* HUGE_VAL / signbit for sp_float_to_s */
 
+#ifndef SP_MULTI_CTX  /* per-ctx macro under SP_MULTI_CTX (sp_ctx.h) */
 const char *sp_sprintf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));  /* defined in the generated TU */
+#endif
 
 /* Global heap lock (Phase 1, design 6.1). Under SP_THREADS one mutex serializes
    the object- and string-heap mutations -- the trigger+collect, the calloc/
@@ -709,7 +711,9 @@ static void __attribute__((noinline, cold)) sp_raise_frozen_array(void) { sp_rai
    object itself (identity-preserving boxing of the mutation target) (#3002).
    sp_exc_stage_recv lives in the generated TU; the ctor transfers the staged
    value onto the raised exception's xrecv slot. */
+#ifndef SP_MULTI_CTX  /* per-ctx macro under SP_MULTI_CTX (sp_ctx.h) */
 void sp_exc_stage_recv(sp_RbVal v);
+#endif
 /* the raise itself, in lib/sp_cold.c: the message carries the receiver's
    inspect, as CRuby's does ("can't modify frozen Array: [1, 2]") */
 __attribute__((noreturn)) void sp_raise_frozen_array_rv(sp_RbVal v);

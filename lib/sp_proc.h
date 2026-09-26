@@ -29,7 +29,9 @@ typedef struct sp_Proc { void *fn; void *cap; void (*cap_scan)(void *); sp_int a
    through a container or an untyped slot still knows when it is done. */
 typedef struct { sp_Proc *target; sp_int arity; sp_int nargs; sp_RbVal args[16]; } sp_Curry;
 
+#ifndef SP_MULTI_CTX  /* per-ctx macro under SP_MULTI_CTX (sp_ctx.h) */
 sp_int sp_proc_call(sp_Proc *p, sp_int argc, sp_int *args);   /* defined in the generated TU */
+#endif
 /* The proc calling convention's boxed side channel: how many arguments it
    carries. Every publisher, the GC scan that keeps them alive, and the gates
    that decline a longer call read this one name -- a second copy of the
@@ -37,8 +39,12 @@ sp_int sp_proc_call(sp_Proc *p, sp_int argc, sp_int *args);   /* defined in the 
    marked, or marked and never passed. Machine-generated code reaches 17
    parameters and the old 16 refused it outright. */
 #define SP_PROC_ARG_SLOTS 64
+#ifndef SP_MULTI_CTX  /* per-ctx macro under SP_MULTI_CTX (sp_ctx.h) */
 extern SP_TLS sp_RbVal _sp_proc_poly_args[SP_PROC_ARG_SLOTS];    /* defined in the generated TU */
+#endif
+#ifndef SP_MULTI_CTX  /* per-ctx macro under SP_MULTI_CTX (sp_ctx.h) */
 extern SP_TLS sp_RbVal _sp_proc_poly_ret;                        /* defined in the generated TU */
+#endif
 
 /* The lineage root of a proc: dups/clones of one proc share it, so Proc#== /
    #eql? compare roots (a dup == its original) while distinct literals differ. */

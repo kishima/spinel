@@ -832,7 +832,9 @@ int sp_slab_verify_on = 0;   /* declared above */
 typedef struct { unsigned char what, wid; unsigned short cycle; } sp_slab_shadow_ev;
 typedef struct { unsigned char n; sp_slab_shadow_ev ev[8]; } sp_slab_shadow_rec;
 static sp_slab_shadow_rec *sp_slab_shadow = NULL;
+#ifndef SP_MULTI_CTX  /* per-ctx macro under SP_MULTI_CTX (sp_ctx.h) */
 extern int sp_gc_cycle;
+#endif
 #define SP_SHADOW(p) (sp_slab_shadow ? &sp_slab_shadow[((uintptr_t)(p) - sp_slab_base) >> 5] : NULL)
 void sp_slab_note(const void *p, int what) {
   if (!sp_slab_verify_on || !sp_slab_owns(p)) return;

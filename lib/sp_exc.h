@@ -113,8 +113,12 @@ const char *sp_exc_signm_acc(sp_Exception *e);
 /* ---- Signal/Interrupt exception constructors: relocated from
    spinel_rt.h (0 optcarrot uses). sp_signal_resolve/sp_signal_signame
    are already non-static (resolved at the final link). ---- */
+#ifndef SP_MULTI_CTX  /* per-ctx macro under SP_MULTI_CTX (sp_ctx.h) */
 int sp_signal_resolve(sp_RbVal sig);
+#endif
+#ifndef SP_MULTI_CTX  /* per-ctx macro under SP_MULTI_CTX (sp_ctx.h) */
 const char *sp_signal_signame(sp_int no);
+#endif
 sp_Exception *sp_signal_exc_new_m(sp_RbVal sig, const char *msg);
 sp_Exception *sp_signal_exc_new(sp_RbVal sig);
 sp_Exception *sp_interrupt_new(const char *msg);

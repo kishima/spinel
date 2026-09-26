@@ -457,7 +457,9 @@ extern int sp_slab_on;
 /* ---- Collector entry points (defined in lib/sp_gc.c) ---- */
 int  sp_gc_verify_on(void);   /* SPINEL_GC_VERIFY is set (diagnostics only) */
 extern const char *sp_gc_dbg_phase;   /* which root group the mark walk is in */
+#ifndef SP_MULTI_CTX  /* per-ctx macro under SP_MULTI_CTX (sp_ctx.h) */
 extern void *sp_gc_dbg_ctx;
+#endif
 void sp_gc_mark(void *obj);
 void sp_gc_mark_all(void);
 void sp_gc_mark_drain(void);

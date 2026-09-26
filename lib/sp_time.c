@@ -347,7 +347,9 @@ sp_Time sp_time_localtime(sp_Time t) {
 }
 /* Parse a "+HH:MM"/"-HH:MM"/"+HHMM"/"UTC" utc_offset string to seconds (#3093). */
 int32_t sp_time_offset_from_str(const char *s) {SP_GC_ROOT_STR(s);
+#ifndef SP_MULTI_CTX  /* per-ctx macro under SP_MULTI_CTX (sp_ctx.h) */
   const char *sp_sprintf(const char *fmt, ...);  /* generated TU */
+#endif
   if (!s || strcmp(s, "UTC") == 0 || strcmp(s, "Z") == 0) return 0;
   char sign = s[0];
   if (sign != '+' && sign != '-')
