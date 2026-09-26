@@ -43,7 +43,16 @@
 #include <sys/time.h> /* utimes() for File.utime */
 #include <errno.h>
 #include <fcntl.h>   /* fcntl flags for #close_on_exec?, #fcntl */
-#include <poll.h>    /* POLLIN for the socket read park */
+/* poll.h: POLLIN for the socket read park */
+#if defined(__has_include)
+#  if __has_include(<poll.h>)
+#    include <poll.h>
+#  else
+#    include <sys/poll.h>  /* ESP-IDF newlib ships only the sys/ spelling */
+#  endif
+#else
+#  include <poll.h>
+#endif
 
 /* Per-call "do not block" for send(2). Linux honours it; Darwin and the BSDs
    accept the flag and sleep anyway once the send buffer is full, which is why
@@ -176,8 +185,8 @@ size_t sp_io_stdio_buffered(FILE *fp) {
   if (!fp) return 0;
 #if defined(__GLIBC__)
   return fp->_IO_read_end > fp->_IO_read_ptr ? (size_t)(fp->_IO_read_end - fp->_IO_read_ptr) : 0;
-#elif defined(__APPLE__)
-  return fp->_r > 0 ? (size_t)fp->_r : 0;
+#elif defined(__APPLE__) || defined(__NEWLIB__)
+  return fp->_r > 0 ? (size_t)fp->_r : 0;   /* BSD stdio; newlib shares it */
 #else
   return __freadahead(fp);   /* musl */
 #endif
@@ -686,8 +695,14 @@ sp_int sp_sock_const(const char *n) {
 #ifdef MSG_OOB
     { "MSG_OOB", MSG_OOB },
 #endif
-    { "AF_INET", AF_INET }, { "AF_INET6", AF_INET6 }, { "AF_UNIX", AF_UNIX },
-    { "PF_INET", PF_INET }, { "PF_INET6", PF_INET6 }, { "PF_UNIX", PF_UNIX },
+    { "AF_INET", AF_INET }, { "AF_INET6", AF_INET6 },
+    { "PF_INET", PF_INET }, { "PF_INET6", PF_INET6 },
+#ifdef AF_UNIX   /* absent where there are no local sockets (ESP-IDF newlib) */
+    { "AF_UNIX", AF_UNIX },
+#endif
+#ifdef PF_UNIX
+    { "PF_UNIX", PF_UNIX },
+#endif
     { "SOCK_STREAM", SOCK_STREAM }, { "SOCK_DGRAM", SOCK_DGRAM },
     { "SHUT_RD", SHUT_RD }, { "SHUT_WR", SHUT_WR }, { "SHUT_RDWR", SHUT_RDWR },
     { NULL, 0 }
@@ -960,8 +975,8 @@ sp_int sp_sock_listen(sp_File *f, sp_int backlog) {SP_GC_ROOT(f);
 static long sp_io_buffered(sp_File *f) {
 #if defined(__GLIBC__)
   return (long)(f->fp->_IO_read_end - f->fp->_IO_read_ptr);
-#elif defined(__APPLE__)
-  return (long)f->fp->_r;
+#elif defined(__APPLE__) || defined(__NEWLIB__)
+  return (long)f->fp->_r;   /* BSD stdio; newlib shares it */
 #else
   return (long)__freadahead(f->fp);
 #endif

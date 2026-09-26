@@ -41,7 +41,16 @@
 #include "sp_system.h" /* sp_last_status for backtick */
 #include "sp_format.h" /* sp_float_to_rational for sp_float_denominator/numerator */
 #include <sys/select.h>  /* IO.select and the IO#wait_* readiness family */
-#include <poll.h>        /* POLLIN/POLLOUT for the scheduler park behind them */
+/* poll.h: POLLIN/POLLOUT for the scheduler park behind them */
+#if defined(__has_include)
+#  if __has_include(<poll.h>)
+#    include <poll.h>
+#  else
+#    include <sys/poll.h>  /* ESP-IDF newlib ships only the sys/ spelling */
+#  endif
+#else
+#  include <poll.h>
+#endif
 #include <sys/socket.h> /* SOCK_STREAM / SOCK_DGRAM for Addrinfo */
 
 /* lib/sp_gc.c. Declared here rather than in sp_gc.h: that header is included
@@ -897,12 +906,18 @@ sp_Time sp_file_birthtime(const char *path) {SP_GC_ROOT_STR(path);  /* (#2985) *
 #endif
 }
 sp_int sp_process_getpriority(sp_int which, sp_int who) {  /* (#3046) */
+#ifdef SP_NO_PROCESS
+  (void)which; (void)who;
+  sp_raise_cls("NotImplementedError", "getpriority() function is unimplemented on this machine");
+  return 0;
+#else
   errno = 0;
   int r = getpriority((int)which, (id_t)who);
   if (r == -1 && errno != 0)
     sp_raise_cls(errno == EINVAL ? "Errno::EINVAL" : (errno == ESRCH ? "Errno::ESRCH" : "SystemCallError"),
                  strerror(errno));
   return (sp_int)r;
+#endif
 }
 sp_IntArray *sp_process_groups(void) {  /* (#3046) */
   sp_IntArray *a = sp_IntArray_new();
@@ -3287,7 +3302,11 @@ const char *sp_argf_gets(void) {
   static size_t cap = 0;
   for (;;) {
     if (!sp_argf_ensure()) return NULL;
+#ifdef __NEWLIB__
+    ssize_t n = __getline(&line, &cap, sp_argf_obj.cur);   /* newlib: no getline */
+#else
     ssize_t n = getline(&line, &cap, sp_argf_obj.cur);
+#endif
     if (n >= 0) {
       char *r = sp_str_alloc_raw((size_t)n + 1);
       memcpy(r, line, (size_t)n); r[n] = '\0';
@@ -4104,7 +4123,11 @@ sp_Addrinfo *sp_addrinfo_new(const char *ip, sp_int port, sp_int stype, sp_int i
   int v6 = !is_unix && ip && strchr(ip, ':') != NULL;
   a->afname = sp_sprintf("%s", is_unix ? "AF_UNIX" : v6 ? "AF_INET6" : "AF_INET");
   sp_gc_wb((void *)a);   /* the two sprintfs can promote the rooted object */
+#ifdef AF_UNIX
   a->afamily = is_unix ? AF_UNIX : v6 ? AF_INET6 : AF_INET;
+#else
+  a->afamily = v6 ? AF_INET6 : AF_INET;   /* no local sockets here */
+#endif
   a->port = port;
   a->socktype = stype;
   a->protocol = 0;

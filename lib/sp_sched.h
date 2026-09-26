@@ -18,7 +18,15 @@
 #ifndef SP_SCHED_H
 #define SP_SCHED_H
 
-#include <poll.h>
+#if defined(__has_include)
+#  if __has_include(<poll.h>)
+#    include <poll.h>
+#  else
+#    include <sys/poll.h>  /* ESP-IDF newlib ships only the sys/ spelling */
+#  endif
+#else
+#  include <poll.h>
+#endif
 #include "sp_fiber.h"
 
 typedef enum { SP_TH_RUNNABLE, SP_TH_RUNNING, SP_TH_BLOCKED, SP_TH_DEAD } sp_thread_state;

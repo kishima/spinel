@@ -583,8 +583,10 @@ static void sp_gc_fault_report(int sig) {
   const char *m4 = "\n  The slot's value is the pointer the collector could not read.\n";
   for (const char *p = m4; *p; p++) buf[o++] = *p;
   ssize_t wr = write(2, buf, o); (void)wr;
+#ifndef SP_NO_MMAN   /* an MMU-less port's libc has no signal(2) */
   signal(sig, SIG_DFL);
   raise(sig);
+#endif
 }
 __attribute__((constructor)) static void sp_gc_debug_env(void){
 #ifndef SP_MULTI_CTX
@@ -642,8 +644,10 @@ __attribute__((constructor)) static void sp_gc_debug_env(void){
     sp_gc_str_major_sched = !(sm && strcmp(sm, "size") == 0); }
 #ifdef SP_MULTI_CTX
   /* no instance exists yet: ask the environment, as sp_instance_create will */
+#ifndef SP_NO_MMAN   /* no signal(2) on an MMU-less port: verify runs without the fault report */
   { const char *v=getenv("SPINEL_GC_VERIFY");
     if (v&&*v&&*v!='0') { signal(SIGSEGV, sp_gc_fault_report); signal(SIGBUS, sp_gc_fault_report); } }
+#endif
 #else
   if (sp_gc_verify) { signal(SIGSEGV, sp_gc_fault_report); signal(SIGBUS, sp_gc_fault_report); }
 #endif

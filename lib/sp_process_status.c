@@ -70,7 +70,11 @@ int sp_process_status_signaled_p(sp_int s) {
 int sp_process_status_coredump_p(sp_int s) {
   int st = (int)s;
   if (!WIFSIGNALED(st)) return 0;
+#ifdef WCOREDUMP
   return WCOREDUMP(st) ? 1 : 0;
+#else
+  return 0;   /* newlib's <sys/wait.h> has no WCOREDUMP */
+#endif
 }
 
 /* Tri-state, because CRuby's is: true when the process exited with status 0,

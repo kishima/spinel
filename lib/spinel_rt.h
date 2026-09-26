@@ -3675,7 +3675,11 @@ static sp_bool sp_poly_eq_deep(sp_RbVal a, sp_RbVal b) {
     else if (a.cls_id == SP_BUILTIN_POLY_POLY_HASH) r = sp_PolyPolyHash_eq((sp_PolyPolyHash *)a.v.p, (sp_PolyPolyHash *)b.v.p);
     else                                           r = sp_poly_hash_eq_cross(a, b);
   }
-  else r = sp_obj_eq_hook(a, b);   /* non-NULL: sp_poly_eq's object arm checks it first */
+  /* sp_poly_eq's object arm checks the hook first, but this function is also
+     reached from the array/hash arms; tested again here so a program that
+     never installs one does not leave GCC a call through a known-NULL pointer
+     (a call to address 0, which the Xtensa windowed-call linker rejects). */
+  else r = sp_obj_eq_hook ? sp_obj_eq_hook(a, b) : FALSE;
   sp_poly_recur_pop(mark);
   return r;
 }
