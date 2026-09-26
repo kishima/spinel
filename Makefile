@@ -915,7 +915,7 @@ check-stack: $(SPINEL)
 # --no-main MC unit is not part of the .rb/.expected oracle harness. The nm gate
 # runs first so a build that lost the allocation override fails fast.
 .PHONY: test-multi-ctx
-test-multi-ctx: check-mc-syms
+test-multi-ctx: check-mc-syms check-mc-globals
 	@SPINEL=$(SPINEL) ./test/multi_ctx/smoke.sh
 	@SPINEL=$(SPINEL) ./test/multi_ctx/link2.sh
 	@SPINEL=$(SPINEL) ./test/multi_ctx/estalloc.sh
@@ -925,6 +925,12 @@ test-multi-ctx: check-mc-syms
 .PHONY: check-mc-syms
 check-mc-syms: $(SPINEL) $(SP_RT_MC_LIB)
 	@SPINEL=$(SPINEL) ./test/multi_ctx/check_syms.sh
+
+# leak gate: every data/bss symbol still in the mc archive is classified in
+# test/multi_ctx/globals_allow.txt (see test/multi_ctx/check_globals.sh).
+.PHONY: check-mc-globals
+check-mc-globals: $(SP_RT_MC_LIB)
+	@./test/multi_ctx/check_globals.sh
 
 # The actual run. rbs-test golden-checks the RBS extractor (cheap, C-only).
 # rbs-seed-test checks the seeds actually reach the analyzer (incl. nested

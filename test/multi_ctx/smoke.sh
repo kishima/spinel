@@ -102,7 +102,9 @@ fi
 
 # 3. N-thread run under AddressSanitizer, built from source (the archive is -O2
 #    without -g/instrumentation). Skipped if the compiler lacks ASan.
-RT_MEMBERS="sp_bigint sp_crypto sp_pack sp_time sp_core sp_net sp_system sp_ctx sp_gc sp_alloc sp_marshal sp_format sp_string sp_inspect sp_array sp_str sp_re sp_random sp_fiber sp_sched sp_io sp_cold"
+# the archive members as the Makefile lists them (a hand-kept copy drifted
+# when the runtime grew new files)
+RT_MEMBERS="$(sed -n 's/^RT_MEMBERS = //p' "$ROOT/Makefile")"
 SRCS=""; for m in $RT_MEMBERS; do SRCS="$SRCS $LIB/$m.c"; done
 RESRC="$LIB/regexp/re_compile.c $LIB/regexp/re_exec.c $LIB/regexp/re_utf8.c"
 if cc -g -O1 -w $MCFLAGS -DNTHREADS=$NTHREADS -fsanitize=address \

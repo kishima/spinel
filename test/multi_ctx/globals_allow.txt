@@ -1,0 +1,117 @@
+# Process-wide data the SP_MULTI_CTX archive may keep (test/multi_ctx/check_globals.sh).
+#
+# Every other data/bss symbol in lib/libspinel_rt_mc.a is a leak: state one
+# instance would share with another. Upstream adds runtime state all the time
+# (109 such symbols at the fork point, 377 at 01521b1e), and a new one does
+# not show up as a merge conflict -- only here.
+#
+# Format: <object> <symbol|glob> <class>  # reason
+# A trailing .N on a function-local static (buf.0) is the compiler's; the gate
+# strips it, so list the bare name. Classes:
+#   RO      read-only after the first touch: const tables, init-once caches
+#           whose every writer stores the same values
+#   CONFIG  set once from the environment by a process constructor, before any
+#           instance exists; read-only after
+#   SAME    every instance stores the same value (a hook pointing at the same
+#           runtime function)
+#   DIAG    diagnostics only (SPINEL_GC_PHASES / SPINEL_GC_STATS output); racy
+#           counts under concurrent instances, never read for a decision
+#   THREADS state of the SP_THREADS parallel collector / scheduler; stays at its
+#           initial value in a single-threaded instance
+#   NOSLAB  the slab allocator, compiled out under SP_MULTI_CTX (SP_NO_SLAB):
+#           never written
+#   PORTOUT a module a port leaves out of its build (fibers, the green-thread
+#           scheduler, sockets, crypt(3)); unsupported in an instance
+#   PROCESS genuinely process-wide: the thread-local current-instance pointer,
+#           the standard streams, ARGF's line buffer
+#   SCRATCH a shared scratch buffer on an error or rarely-used path; two
+#           instances hitting it at once would garble a message, not the heap
+
+# --- regexp engine ---
+re_compile.o buf SCRATCH       # Regexp flag-letter rendering, 4 rotating 64-byte buffers
+re_compile.o rot SCRATCH       # the rotation index for the above
+re_utf8.o emo RO               # emoji property table
+re_utf8.o re_gc_names RO       # general-category name table
+
+# --- sp_alloc.c ---
+sp_alloc.o buf DIAG            # [gcph] label scratch
+sp_alloc.o first DIAG          # SPINEL_GC_STATS clock origin
+sp_alloc.o last DIAG           # SPINEL_GC_STATS last report time
+sp_alloc.o on DIAG             # SPINEL_GC_STATS gate
+sp_alloc.o prev_marked DIAG    # [gcph] deltas
+sp_alloc.o prev_swept DIAG     # [gcph] deltas
+sp_alloc.o sp_alloc_report_on RO     # SP_NO_ALLOC_REPORT (implied by SP_MULTI_CTX): always 0
+sp_alloc.o sp_gc_obj_budget_mode CONFIG   # SPINEL_GC_OBJ_BUDGET
+sp_alloc.o sp_gc_obj_budget_fixed CONFIG  # SPINEL_GC_OBJ_BUDGET=fixed
+sp_alloc.o sp_gc_str_budget_fixed CONFIG  # SPINEL_GC_STR_BUDGET=fixed
+sp_alloc.o sp_gc_str_major_fixed CONFIG   # SPINEL_GC_STR_MAJOR=fixed
+sp_alloc.o sp_gc_str_major_sched CONFIG   # SPINEL_GC_STR_MAJOR=size
+
+# --- sp_bigint.c (mruby's mpz, vendored) ---
+sp_bigint.o dummy_mrb RO           # the shim's stand-in mrb_state: never read for state
+sp_bigint.o sp_mpz_ctx RO          # init-once pointer to the shim context below
+sp_bigint.o sp_mpz_ctx_storage RO  # {mrb, pool=NULL}; allocation goes through the instance
+
+# --- sp_cold.c ---
+sp_cold.o armed PROCESS        # Signal.trap(0): one atexit registration per process
+sp_cold.o cap PROCESS          # ARGF getline buffer (ARGF is the process's stdin/ARGV)
+sp_cold.o line PROCESS         # ARGF getline buffer
+sp_cold.o pfx RO               # backtrace demangler prefixes
+sp_cold.o sp_warn_cats RO      # Warning category names
+
+# --- sp_core.c / sp_ctx.c / sp_exc.c ---
+sp_core.o sp_c_loc RO          # the C locale handle, created once
+sp_ctx.o g_sp_ctx PROCESS      # __thread: the current instance
+sp_exc.o HIER RO               # builtin exception hierarchy
+sp_exc.o NONSTD RO             # non-StandardError builtins
+sp_exc.o SP_ERRNO_TAB RO       # errno -> Errno:: class
+sp_exc.o WAIT_R RO             # IO::WaitReadable family
+sp_exc.o WAIT_W RO             # IO::WaitWritable family
+sp_exc.o sp_exc_no_msg RO      # sentinel pointer
+
+# --- sp_gc.c ---
+sp_gc.o last_trim DIAG         # malloc_trim pacing (a no-op under SP_MULTI_CTX)
+sp_gc.o trim_every DIAG        # malloc_trim pacing
+sp_gc.o sp_gc_ph_* DIAG        # SPINEL_GC_PHASES timers and counters
+sp_gc.o sp_gc_dbg_phase DIAG   # SPINEL_GC_VERIFY: which root group is being walked
+sp_gc.o sp_gc_age_on CONFIG    # SPINEL_GC_AGE
+sp_gc.o sp_gc_minor_on CONFIG  # SPINEL_GC_MINOR
+sp_gc.o sp_gc_verify_gen CONFIG        # SPINEL_GC_VERIFY_GEN
+sp_gc.o sp_gc_full_interval_fixed CONFIG   # SPINEL_GC_FULL_INTERVAL pins it
+sp_gc.o sp_gc_full_interval_start CONFIG   # ... and the value each instance starts from
+sp_gc.o sp_gc_conc_on THREADS
+sp_gc.o sp_gc_conc_promote THREADS
+sp_gc.o sp_gc_conc_sweep_hook THREADS
+sp_gc.o sp_gc_conc_wait_hook THREADS
+sp_gc.o sp_gc_in_sweeper THREADS
+sp_gc.o sp_gc_par_mark_on THREADS
+sp_gc.o sp_gc_trim_wanted THREADS    # the trimmer thread
+sp_gc.o sp_gc_trimmer_on THREADS
+sp_gc.o sp_gc_obj_retune_hook SAME       # sp_gc_retune_object
+sp_gc.o sp_gc_str_major_due_hook SAME    # sp_str_major_due
+sp_gc.o sp_gc_roots_ext RO     # the overflow segment: NULL under SP_MULTI_CTX (one segment per instance)
+
+# --- sp_io.c / sp_iobuffer.c ---
+sp_io.o cached SCRATCH         # Socket.pair: the second end between two calls
+sp_io.o s PROCESS              # the static STDOUT / STDERR / STDIN handles
+sp_io.o sentinel PROCESS       # /dev/null stream a closed handle points at
+sp_iobuffer.o FLAGS RO         # IO::Buffer flag names
+sp_iobuffer.o iob_types RO     # IO::Buffer type table
+
+# --- process / random / str / time ---
+sp_process.o sp_err_buf SCRATCH          # Process.spawn error text
+sp_process_status.o sp_status_buf SCRATCH  # Process::Status#inspect text
+sp_random.o sp_random_auto_ctr RO        # seed salt: any value is correct
+sp_str.o ops RO                # operator name table
+sp_str.o sp_char_cache RO      # one-byte strings, filled once with fixed values
+sp_str.o sp_char_cache_init RO
+sp_str.o sp_hdr_char_cache RO  # the same with headers, filled once with fixed values
+sp_str.o sp_hdr_char_cache_init RO
+sp_time.o names RO             # month / weekday names
+
+# --- modules outside an instance ---
+sp_slab.o * NOSLAB
+sp_fiber.o * PORTOUT
+sp_sched.o * PORTOUT
+sp_net.o * PORTOUT
+sp_crypto.o * PORTOUT

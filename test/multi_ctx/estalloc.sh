@@ -88,7 +88,9 @@ cc -O2 -w -I"$LIB" "$TMP/ertest.o" "$TMP/deep.o" "$TMP/estalloc.o" "$MC" -lm -lc
 # Built from source (the archive is not instrumented). Every runtime allocation
 # lands in a static pool, so a clean leak report also confirms no libc-level
 # leak and no cross-instance corruption.
-RT_MEMBERS="sp_bigint sp_crypto sp_pack sp_time sp_core sp_net sp_system sp_ctx sp_gc sp_alloc sp_marshal sp_format sp_string sp_inspect sp_array sp_str sp_re sp_random sp_fiber sp_sched sp_io sp_cold"
+# the archive members as the Makefile lists them (a hand-kept copy drifted
+# when the runtime grew new files)
+RT_MEMBERS="$(sed -n 's/^RT_MEMBERS = //p' "$ROOT/Makefile")"
 ASRC=""; for m in $RT_MEMBERS; do ASRC="$ASRC $LIB/$m.c"; done
 ARE="$LIB/regexp/re_compile.c $LIB/regexp/re_exec.c $LIB/regexp/re_utf8.c"
 if cc -g -O1 -w -fsanitize=address -I"$LIB" -I"$LIB/regexp" -I"$HERE" \
