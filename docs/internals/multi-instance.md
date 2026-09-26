@@ -318,3 +318,74 @@ global but its entry (catches a codegen regression that re-introduces one).
 The **objcopy `--prefix-symbols` fallback** (duplicate the runtime per program)
 was not needed; it remains the escape hatch if a future symbol proves
 un-routable, at the cost of runtime duplication in flash (a Phase-5 concern).
+
+## Rebased onto upstream 01521b1e (2026-09-26)
+
+The inventory above was taken at the fork point, when `libspinel_rt.a`
+defined 109 data/bss symbols. Upstream 01521b1e defines 377: a generational
+collector with a write barrier, generational string heaps, a slab allocator,
+IO::Buffer, Process.spawn, and a runtime that moved much of `spinel_rt.h`
+(the old `sp_runtime.h`) into `lib/*.c`. None of it conflicts textually with
+this design; all of it would have stayed process-wide.
+
+### What moved into sp_ctx
+
+- **Collector**: the mark-generation stamp, the minor/full cycle state, the
+  per-marker counters that feed the budget retunes, the adaptive full
+  interval, GC.stat counters, and the mark stack's capacity (the stack was
+  already per instance, its capacity was not). The remembered and pinned sets
+  are per-instance arrays sized by `sp_instance_config.remembered_entries` /
+  `pinned_entries` (defaults `SP_MC_REMEMBERED_DEFAULT` 1024 /
+  `SP_MC_PINNED_DEFAULT` 256; upstream's process-wide arrays hold 65536 /
+  16384). Overflowing either is safe: the next collection marks the whole heap.
+- **String heap**: the old generation and its thresholds and major cadence,
+  the string-length cache, the PolyArray free pool, the FFI `:binstr` length
+  and deep-return side channels.
+- **Program-wide objects and hooks**: top-level self, the ARGV array cache,
+  the class-frozen map (allocated on the first freeze), Warning[] flags, the
+  to_io / user-exception hooks, the inspect recursion guard, the pre/post
+  match span (`` $` `` / `$'`), `$?`, Marshal's vtable and reader chain, the regexp engine's
+  compile-error handler (reached through `sp_ctx.c`, since the engine cannot
+  include `sp_ctx.h`) and the SystemStackError hook.
+- **TU data the runtime reads** (`sp_argv`, `sp_argf_obj`, `sp_pending_exc_*`,
+  `sp_user_exc_parent_fn`) moved to the ctx; TU data only the TU reads
+  (`sp_callee_name`, `sp_exc_subclass_ids/count`) became TU-private.
+
+Host C that cannot include this header reaches the current instance's
+`:binstr` length and `$?` through `sp_ctx_ffi_bin_len()` /
+`sp_ctx_last_status()`.
+
+### The leak gate
+
+`make check-mc-globals` (`test/multi_ctx/check_globals.sh`, part of
+`make test-multi-ctx`) lists every data/bss symbol still defined in
+`libspinel_rt_mc.a` and fails on any not classified in
+`test/multi_ctx/globals_allow.txt`, which gives each one's reason to be shared
+(read-only, environment configuration, diagnostics, SP_THREADS-only, the
+compiled-out slab, modules a port leaves out, genuinely process-wide handles,
+error-path scratch). A rebase that brings new state fails here, not in the
+field.
+
+### Compiled out rather than split
+
+- The slab allocator (`SP_NO_SLAB`, implied by SP_MULTI_CTX and SP_NO_MMAN):
+  one process-wide mmap reservation cannot sit under per-instance pools.
+- The allocation report (`SP_NO_ALLOC_REPORT`, same implications): its static
+  tables would mix instances and cost 192 KB of RAM on a 32-bit port.
+- The [gcph] old-generation shape ring.
+- The process-wide SIGSEGV stack guard (`sp_stack_guard_init` is a no-op under
+  SP_MULTI_CTX and SP_NO_MMAN): it hung an alternate stack off the first
+  instance's pool.
+
+### Port knobs added with the rebase
+
+- `SP_NO_PROCESS` (implied by SP_NO_MMAN): Process.spawn / waitpid2,
+  Kernel#system and the backtick raise NotImplementedError instead of linking
+  fork/exec. IO::Buffer.map raises the same under SP_NO_MMAN.
+- `lib/sp_nosched.c`: on an SP_NO_MMAN port, which leaves `sp_fiber.c` and
+  `sp_sched.c` out, the scheduler and fiber entry points the rest of the
+  runtime reaches (GC.start, Thread.pass, the Mutex/Queue class names, ...)
+  resolve to their thread-less answers or to NotImplementedError.
+- `SP_GC_MARK_STACK_LIMIT` bounds how far the mark work list may double;
+  under SP_MULTI_CTX a failed grow falls back to recursion instead of ending
+  the instance.
