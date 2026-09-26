@@ -4,7 +4,9 @@
 
 /* Check if exception class name `raised` is the same as or a subclass of
    `target`, using both the built-in hierarchy and the user hierarchy callback. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 const char *const *(*sp_user_exc_modules_fn)(const char *) = 0;
+#endif
 
 /* Errno::EWOULDBLOCK and Errno::EAGAIN are the same class in CRuby, as are the
    IO::EWOULDBLOCKWait* and IO::EAGAINWait* pairs; a name-keyed hierarchy has to

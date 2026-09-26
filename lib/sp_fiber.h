@@ -118,8 +118,21 @@ SP_NORETURN void sp_fiber_raise_kill_self(void);
    fault handler calls it instead of reporting and dying -- on the alternate
    signal stack, so the raise runs on memory the overflow did not touch.
    NULL (nothing installed, or no handler armed) keeps the old report. */
+#if defined(SP_MULTI_CTX) || defined(SP_NO_MMAN)
+/* No process-wide fault guard here. Under SP_MULTI_CTX the guard would hang a
+   signal handler and an alternate stack off whichever instance started first,
+   the stack taken from that instance's pool; a port without an MMU has no
+   guard page to fault on and does not compile sp_fiber.c at all. The hook
+   stays assignable -- the generated init sets it -- as a per-instance field
+   (sp_ctx.h) or, without SP_MULTI_CTX, a private slot in each TU. */
+static inline void sp_stack_guard_init(void) {}
+#ifndef SP_MULTI_CTX
+static void (*sp_stack_overflow_raise_fn)(void);
+#endif
+#else
 extern void (*sp_stack_overflow_raise_fn)(void);
 void sp_stack_guard_init(void);
+#endif
 /* Run the program body on a stack this library maps (see sp_main_stack_run);
    sp_main_stack_hint asks for a size, SPINEL_MAIN_STACK in the environment
    wins over it. */

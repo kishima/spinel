@@ -46,9 +46,11 @@ typedef struct { const void *a, *b; int kind; } sp_poly_recur_frame;
    measuring 8% of optcarrot on exactly that. Only the pointer and the two
    counts live in TLS; the frames are malloc'd on the first push, doubled when
    full, and never shrunk, per worker. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern SP_TLS sp_poly_recur_frame *sp_poly_recur_stack;
 extern SP_TLS int sp_poly_recur_top;
 extern SP_TLS int sp_poly_recur_cap;
+#endif
 void sp_poly_recur_grow(int want);   /* first allocation and every doubling */
 /* A lookup scans the path: a real program's path is under ten frames, and a
    scan of that beats any table. But a scan at every level of a deep walk is
@@ -58,7 +60,9 @@ void sp_poly_recur_grow(int want);   /* first allocation and every doubling */
    lookup is one probe. Frames [0, sp_poly_recur_ixtop) are in the index; a pop
    below that simply lowers it, and the next deep push indexes what is missing. */
 #define SP_POLY_RECUR_SCAN 32
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern SP_TLS int sp_poly_recur_ixtop;
+#endif
 int  sp_poly_recur_seen_deep(int kind, const void *a, const void *b);
 void sp_poly_recur_index(void);      /* bring the index up to sp_poly_recur_top */
 /* Is (kind, a, b) already on the path? `b` is NULL for the single-object kinds

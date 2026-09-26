@@ -46,9 +46,9 @@ size_t sp_str_bytes_total(void) {
 #ifndef SP_MULTI_CTX
 sp_str_hdr *sp_str_heap = NULL;
 size_t sp_str_heap_bytes = 0;
-#endif
 sp_str_hdr *sp_str_old = NULL;
 size_t sp_str_old_bytes = 0;
+#endif
 #endif
 /* SPINEL_GC_OBJ_BUDGET: how much of the mark set the object collection budget
    is priced from. 0 = the object heap alone (`obj`), 1 = the whole set a mark
@@ -57,7 +57,9 @@ size_t sp_str_old_bytes = 0;
 int sp_gc_obj_budget_mode = 2;
 /* The last gate decision, in 1024ths, so the stats line can report it and a
    test can read it. 1024 is `walk`, 0 is `obj`. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 size_t sp_gc_obj_alpha1024 = 1024;
+#endif
 /* SPINEL_GC_OBJ_BUDGET=fixed / SPINEL_GC_STR_BUDGET=fixed: hold that heap's
    budget at its floor instead of re-aiming it after every collection. Read
    once beside the other boot-time GC modes; see the comment there. */
@@ -75,9 +77,11 @@ int sp_gc_str_major_sched = 1;
 /* String majors run on their own gate, so the object collector's `full` count
    does not describe them: pinning that gate changed the old generation from
    57.2 MB to 11.5 MB with the reported full count identical at 6. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 size_t sp_gc_str_majors = 0;
 size_t sp_str_old_threshold = 1024 * 1024;
 size_t sp_str_old_threshold_init = 1024 * 1024;
+#endif
 /* How many string sweeps between majors, and the count that drives it. The cadence is a COUNT rather than a size because a
    size gate re-aimed from the old list is aimed at a number the same gate
    produced: a small budget promotes early, promotion is one-way until a major,
@@ -103,9 +107,11 @@ size_t sp_str_old_threshold_init = 1024 * 1024;
    halving a real application's. */
 #define SP_STR_MAJOR_INTERVAL 8
 #define SP_STR_MAJOR_INTERVAL_MAX 128
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 static int sp_str_major_interval = SP_STR_MAJOR_INTERVAL;
 static unsigned sp_str_sweep_cycle = 0;
 static int sp_str_major_forced = 0;
+#endif
 /* The old generation's size at every string sweep, so the run can be described
    by its shape rather than by whichever instant a per-second line happened to
    catch. rubys' reading on #4407 is that the ratio of the MEDIAN to the MINIMUM
@@ -117,12 +123,16 @@ static int sp_str_major_forced = 0;
    collector's, not the clock's. A ring, so a long run costs no more than a
    short one and the samples are the most recent SP_STR_SHAPE_MAX. */
 #define SP_STR_SHAPE_MAX 8192
+#ifndef SP_MULTI_CTX  /* diagnostics ([gcph]); a process-wide ring would mix instances */
 static size_t sp_str_shape[SP_STR_SHAPE_MAX];
 static unsigned sp_str_shape_n = 0;      /* total sweeps seen */
+#endif
+#ifndef SP_MULTI_CTX
 static int sp_str_shape_cmp(const void *a, const void *b) {
   size_t x = *(const size_t *)a, y = *(const size_t *)b;
   return x < y ? -1 : (x > y ? 1 : 0);
 }
+#endif
 /* The [gcph] line names whichever policy is running, so the number after it is
    never read as the other one's: the default's is a size to cross, the
    schedule's is a cadence with the size demoted to a backstop. */
@@ -138,8 +148,10 @@ static const char *sp_str_major_label(void) {
    everything it reached at a major, plus what it promoted at each minor --
    settled at sp_str_sweep_end. The lists below hold only the strings too
    large for the slab. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 static size_t sp_str_old_slab_bytes = 0;
 extern size_t sp_gc_mk_str_bytes, sp_gc_mk_str_young_bytes;   /* lib/sp_gc.c: this cycle's mark */
+#endif
 /* After every mark (lib/sp_gc.c): a full cycle's mark reached every live
    slab string, and the sweep of the bitmaps leaves exactly those; a minor's
    promoted what it reached of the young. Every cycle, whatever the string
@@ -178,7 +190,9 @@ int sp_str_stress_checked = 0;
 
 const char sp_str_empty_data[] = "\xff";
 
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 SP_TLS int sp_ffi_bin_len = 0;   /* see sp_alloc.h: byte count for :binstr / :cbinstr */
+#endif
 
 /* Object-heap collection threshold (was per-TU static in spinel_rt.h; now
    shared so sp_gc_alloc can live in sp_alloc.h and lib TUs allocate too). */
@@ -192,7 +206,9 @@ int sp_gc_stress_checked = 0;
    live set outgrows the base, stress stopped stressing after the first
    collection -- request-time bugs sat behind a cadence identical to the
    default's while boot-time ones reproduced instantly (#3513). */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 int sp_gc_stress_pin = 0;
+#endif
 
 #ifdef SP_THREADS
 pthread_mutex_t sp_heap_lock = PTHREAD_MUTEX_INITIALIZER;   /* see sp_alloc.h */
@@ -396,6 +412,7 @@ static void sp_gc_stats_emit(void) {
           (unsigned long long)sp_gc_str_majors);
   /* median / min over the sweeps, and their ratio. One number for the sawtooth
      the per-second line can only show a slice of. */
+#ifndef SP_MULTI_CTX
   if (sp_str_shape_n > 0) {
     unsigned n = sp_str_shape_n < SP_STR_SHAPE_MAX ? sp_str_shape_n : SP_STR_SHAPE_MAX;
     size_t *cp = (size_t *)malloc((size_t)n * sizeof *cp);
@@ -411,6 +428,7 @@ static void sp_gc_stats_emit(void) {
       free(cp);
     }
   }
+#endif
   fprintf(stderr,
           "[gcph] marked %llu objs  swept %llu slots\n",
           (unsigned long long)SP_GC_CTR_GET(sp_gc_ct_marked), (unsigned long long)SP_GC_CTR_GET(sp_gc_ct_swept));
@@ -570,7 +588,9 @@ void sp_gc_retune_object(size_t before) {
    inflate by N each cycle -- retuning on the aggregate would grow it
    geometrically for long-lived strings. The single-threaded build works in
    absolute bytes (N == 1). */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 static size_t sp_str_gate_old = 0;   /* the old total at the gate, for `before` */
+#endif
 /* Young bytes to leave out of the retune's "after": the concurrent sweep
    retunes at the next barrier, by which time the young lists hold a cycle of
    new allocation that the swept generation never contained. */
@@ -659,8 +679,10 @@ void *sp_gc_alloc_nogc(size_t sz, void (*fin)(void *), void (*scn)(void *)) {
   return (char *)h + sizeof(sp_gc_hdr);
 }
 
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 SP_TLS struct sp_str_lcache_entry sp_str_lcache[SP_STR_LCACHE_SIZE];
 SP_TLS void *_sp_ret_strbuf;
+#endif
 
 void sp_str_lcache_clear(void) {
   for (unsigned i = 0; i < SP_STR_LCACHE_SIZE; i++) sp_str_lcache[i].s = NULL;
@@ -744,8 +766,10 @@ static void sp_str_sweep_young_into(sp_str_hdr **head, size_t *bytes,
    string itself (0xfe unmarked, 0xfc marked), not a generation stamp on a
    header. Snapshot the young strings still unmarked after the minor, then read
    the same byte back after the whole-heap mark. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 static const char **sp_str_vcand = NULL;
 static size_t sp_str_vcand_n = 0, sp_str_vcand_cap = 0;
+#endif
 static void sp_str_vcand_push(const char *body) {
   if (sp_str_vcand_n == sp_str_vcand_cap) {
     size_t c = sp_str_vcand_cap ? sp_str_vcand_cap * 2 : 1024;
@@ -869,8 +893,10 @@ void sp_str_sweep(void) {
    what it recycles it can hand back to itself with no atomics at all; the
    sweeper threads and the barrier helpers recycle into their own, which
    the cap bounds. The cap is per thread for the same reason. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 SP_TLS sp_gc_hdr *sp_polyarr_pool_head = NULL;
 SP_TLS long sp_polyarr_pool_count = 0;
+#endif
 /* The cap is per thread, so threaded it is a fraction of what the one
    process-wide pool held (up to 64k, which a tree benchmark churning tens
    of thousands of arrays a cycle leaned on): 8k a worker bounds thirty
@@ -907,7 +933,9 @@ void sp_PolyArray_pool_recycle(sp_gc_hdr *h) {
    worker's two lists, `end` re-aims the thresholds. The serial driver below
    still calls all three in a row; the scheduler interleaves the middle across
    the parked workers instead. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 static size_t sp_str_gate_before = 0;
+#endif
 #ifdef SP_THREADS
 int sp_str_par_done = 0;   /* the workers already did it for this collection */
 #endif
@@ -937,10 +965,12 @@ int sp_str_sweep_begin(int *major) {
   /* Only once a major has run: before that the minimum is the empty heap, not
      "what a major can leave", and a min of zero makes the ratio meaningless
      (it reads 0.0x rather than large). */
+#ifndef SP_MULTI_CTX
   if (sp_gc_str_majors > 0) {
     sp_str_shape[sp_str_shape_n % SP_STR_SHAPE_MAX] = sp_str_gate_old;
     sp_str_shape_n++;
   }
+#endif
   /* Walk the old generation only once it has itself grown past a threshold,
      then re-aim that threshold at what survived. Between majors, old strings
      that die are reclaimed late -- the same delayed-reclamation trade this
@@ -1097,6 +1127,12 @@ __attribute__((constructor)) static void sp_alloc_install_hooks(void) {
 /* SP_MULTI_CTX: the same installation, run by sp_instance_create with the new
    instance made current, so the hooks and the floors land in that instance. */
 void sp_alloc_instance_init(void) {
+  /* the upstream-added string-heap state whose default is not zero, set
+     before the env floors below may override it */
+  sp_str_old_threshold = sp_str_old_threshold_init = 1024 * 1024;
+  sp_str_major_interval = SP_STR_MAJOR_INTERVAL;
+  sp_gc_obj_alpha1024 = 1024;
+  SP_CTX()->str_lcache = calloc(SP_STR_LCACHE_SIZE, sizeof(struct sp_str_lcache_entry));
   sp_gc_str_sweep_hook = sp_str_sweep_gated;
   sp_gc_str_major_due_hook = sp_str_major_due;
   sp_gc_obj_retune_hook = sp_gc_retune_object;
@@ -1140,6 +1176,21 @@ const char *sp_float_to_s(sp_float f) {
   out[o]=0;sp_str_set_len(out,(size_t)o);return out;
 }
 
+/* SP_NO_ALLOC_REPORT compiles the allocation report below out: the counters
+   stay no-ops and sp_alloc_report_on stays 0. The report's tables are static
+   (256 KB at the default size on a 64-bit host, 192 KB on a 32-bit one) --
+   free while untouched on a hosted OS, which pages them in on demand, and a
+   straight loss of RAM on a port, which does not. SP_MULTI_CTX implies it (the
+   tables would mix every instance's allocations), and so does SP_NO_MMAN. */
+#if (defined(SP_MULTI_CTX) || defined(SP_NO_MMAN)) && !defined(SP_NO_ALLOC_REPORT)
+#define SP_NO_ALLOC_REPORT
+#endif
+#ifdef SP_NO_ALLOC_REPORT
+int sp_alloc_report_on = 0;
+void sp_alloc_report_count(void *scan, size_t bytes) { (void)scan; (void)bytes; }
+void sp_alloc_report_str(size_t bytes) { (void)bytes; }
+void sp_alloc_report_tag(void *scan, const char *name) { (void)scan; (void)name; }
+#else
 /* ---- SPINEL_ALLOC_REPORT: deterministic allocation counters (#1336) ----
    Env-var gated (set to 1 or an output path); zero work when off beyond one
    predictable branch at each allocation entry point. Counters key on the
@@ -1436,3 +1487,4 @@ __attribute__((constructor)) static void sp_alloc_report_boot(void) {
     atexit(sp_alloc_report_dump);
   }
 }
+#endif /* SP_NO_ALLOC_REPORT */

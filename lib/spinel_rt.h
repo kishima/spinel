@@ -70,8 +70,10 @@ const char *sp_str_setbyte_cow(const char *s, sp_int i, sp_int v);
 #define backtrace(buf, sz) 0
 #endif
 #define SP_BT_AVAILABLE 1
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern int sp_bt_enabled;          /* set to 1 by debug-build main(); defined in lib/sp_cold.c */
 extern const char *sp_bt_srcfile;  /* toplevel .rb path, set by debug main() */
+#endif
 #if SP_BT_AVAILABLE
 static void *sp_bt_buf[256];       /* frames captured at the last raise */
 static int sp_bt_n = 0;
@@ -1388,7 +1390,9 @@ static const char*sp_SymArrayPtrArray_inspect(sp_PtrArray*a){SP_GC_ROOT(a);sp_St
    triggering the segfault depends on malloc's reuse pattern (so the
    bug surfaces non-deterministically by string length), but the
    underlying issue is unconditional. */
-#ifdef SPINEL_EXT_HOST
+#if defined(SP_MULTI_CTX)
+/* per-instance (sp_ctx.h) */
+#elif defined(SPINEL_EXT_HOST)
 extern sp_Argv sp_argv;
 #else
 sp_Argv sp_argv;   /* type in sp_argf.h; storage here, populated by main() */
@@ -1398,7 +1402,9 @@ static const char *sp_program_name = SPL("");
 /* ARGF: a pseudo-IO that reads the files named in ARGV in sequence, or stdin
    when ARGV is empty (a `-` filename also means stdin). The state is a single
    global; the ARGF constant is a marker pointer to it. */
-#ifdef SPINEL_EXT_HOST
+#if defined(SP_MULTI_CTX)
+/* per-instance (sp_ctx.h) */
+#elif defined(SPINEL_EXT_HOST)
 extern sp_Argf sp_argf_obj;
 #else
 sp_Argf sp_argf_obj = {NULL, 0, NULL};   /* type in sp_argf.h */
@@ -2923,8 +2929,10 @@ sp_Complex sp_str_to_c(const char *s);
 sp_Complex sp_str_to_c_strict(const char *s);
 /* lib/sp_cold.c: while sp_convert_soft is set, an unparseable Complex/Rational
    string sets sp_convert_failed instead of raising (Kernel's exception: false). */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern sp_bool sp_convert_soft;
 extern sp_bool sp_convert_failed;
+#endif
 /* Hash subset/superset comparisons (boxed, any variant pairing): every pair
    of `a` present in `b` with an equal value; strict adds len <. */
 static void sp_poly_hash_pair(sp_RbVal v, sp_int i, sp_RbVal *k, sp_RbVal *out);
@@ -3142,12 +3150,16 @@ static sp_float sp_num_to_f(sp_RbVal v) {
    #exit_value / #value / #args (#2753-#2756, #2770). Cleared on every raise.
    The bridges are extern so the cold lib TUs (frozen-string, nil-receiver
    raisers) can stage too. */
-#ifdef SPINEL_EXT_HOST
+#if defined(SP_MULTI_CTX)
+/* per-instance (sp_ctx.h) */
+#elif defined(SPINEL_EXT_HOST)
 extern SP_TLS sp_RbVal sp_pending_exc_recv, sp_pending_exc_key, sp_pending_exc_val;
 #else
 SP_TLS sp_RbVal sp_pending_exc_recv, sp_pending_exc_key, sp_pending_exc_val;
 #endif
-#ifdef SPINEL_EXT_HOST
+#if defined(SP_MULTI_CTX)
+/* per-instance (sp_ctx.h) */
+#elif defined(SPINEL_EXT_HOST)
 extern SP_TLS unsigned char sp_pending_exc_flags;
 #else
 SP_TLS unsigned char sp_pending_exc_flags = 0;
@@ -10717,7 +10729,9 @@ static void sp_mark_in_flight_exceptions(void) {
    (sp_class_names[] entry; not GC-managed). msg is GC-managed
    (sp_str_alloc'd). */
 /* Registered by the generated program to provide user exception hierarchy. */
-#ifdef SPINEL_EXT_HOST
+#if defined(SP_MULTI_CTX)
+/* per-instance (sp_ctx.h) */
+#elif defined(SPINEL_EXT_HOST)
 extern const char *(*sp_user_exc_parent_fn)(const char *);
 #else
 const char *(*sp_user_exc_parent_fn)(const char *) = NULL;
@@ -10786,8 +10800,15 @@ static void sp_raise_exc(volatile sp_Exception *ve) {
    verify a boxed object is an exception subclass before re-raising
    it -- reading the sp_Exception prefix on a non-exception user
    object is a wrong-offset read (segfault). */
+#ifdef SP_MULTI_CTX
+/* TU-private under SP_MULTI_CTX (codegen emits them SP_TU_STATIC); GCC takes
+   the incomplete static array as a tentative declaration */
+static const sp_int sp_exc_subclass_ids[];
+static const sp_int sp_exc_subclass_count;
+#else
 extern const sp_int sp_exc_subclass_ids[];
 extern const sp_int sp_exc_subclass_count;
+#endif
 
 static inline int sp_is_exc_subclass_cls(sp_int cls_id) {
   for (sp_int i = 0; i < sp_exc_subclass_count; i++)
@@ -12645,7 +12666,9 @@ SP_TLS sp_RbVal _sp_proc_poly_ret;
    name cannot come from the body). Written by the call site just before the
    call and consumed -- and cleared -- by the callee's prologue, so a path that
    does not write it leaves __callee__ on its static answer (#3729). */
-#ifdef SPINEL_EXT_HOST
+#if defined(SP_MULTI_CTX)
+static SP_TLS const char *sp_callee_name = NULL;   /* TU-private: nothing in lib reads it */
+#elif defined(SPINEL_EXT_HOST)
 extern SP_TLS const char *sp_callee_name;
 #else
 SP_TLS const char *sp_callee_name = NULL;

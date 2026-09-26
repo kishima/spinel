@@ -79,7 +79,16 @@ static mrb_bool emit_cp_folded(re_compiler *c, uint32_t cp);  /* forward */
    program calls sp_re_set_error_handler(fn) at startup; fn should
    not return (typically wraps sp_raise_cls). If unset, fall back
    to fprintf + exit. */
+#ifdef SP_MULTI_CTX
+/* Per instance: each program installs its own handler, which raises into its
+   own exception stack. This engine cannot include sp_ctx.h (its types clash
+   with the runtime's), so the slot is reached through sp_ctx.c. */
+typedef void (*sp_re_error_fn)(const char *msg);
+sp_re_error_fn *sp_ctx_re_error_handler(void);
+#define sp_re_error_handler (*sp_ctx_re_error_handler())
+#else
 static void (*sp_re_error_handler)(const char *msg) = NULL;
+#endif
 void sp_re_set_error_handler(void (*fn)(const char *msg)) {
   sp_re_error_handler = fn;
 }

@@ -44,7 +44,9 @@ typedef struct {
   sp_RbVal (*obj_load)(const char *clsname, sp_RbVal iv, int *ok); /* iv = boxed PolyArray */
   void     (*raise)(const char *cls, const char *msg);
 } sp_marshal_vt;
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern sp_marshal_vt sp_marshal_v;
+#endif
 
 const char *sp_marshal_dump(sp_RbVal v);
 sp_RbVal sp_marshal_load(const char *s, sp_int len);

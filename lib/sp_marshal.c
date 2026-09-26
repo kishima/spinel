@@ -212,7 +212,9 @@ typedef struct sp_mar_rd_s {
    the next back-reference reads a corpse. Published here and marked through
    the collector's globals hook, which is the same treatment the regex globals
    get. Reentrant loads chain through `prev`. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 static sp_mar_rd *sp_mar_active = NULL;
+#endif
 void sp_marshal_mark_active(void) {
   for (sp_mar_rd *r = sp_mar_active; r; r = r->prev) {
     sp_mark_string(r->s);

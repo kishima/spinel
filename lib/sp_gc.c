@@ -89,7 +89,37 @@ void (*sp_gc_mark_globals_hook)(void) = NULL;
 void (*sp_gc_str_sweep_hook)(void) = NULL;
 #endif
 int (*sp_gc_str_major_due_hook)(void) = NULL;
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 int sp_gc_root_phase = 0;   /* the mark is walking the C roots (see sp_gc_mark_all) */
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 /* Runtime value-introspection vtable, set once per program by the generated TU
  * (sp_re_init / codegen init). Per-instance under SP_MULTI_CTX (sp_ctx-field
  * macros in sp_ctx.h) so instance A dispatches over A's symbol/class tables. */
@@ -123,7 +153,9 @@ int (*sp_obj_conv_fn)(int cls_id, void *p, int which, sp_RbVal *out) = NULL;
 const char *(*sp_obj_cls_name_fn)(int cls_id) = NULL;
 int (*sp_class_le_id_fn)(int sub, int super) = NULL;
 #endif
-sp_marshal_vt sp_marshal_v = {0};   /* filled by the generated TU (sp_tu_init); shared (see multi-instance.md) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+sp_marshal_vt sp_marshal_v = {0};   /* filled by the generated TU (sp_tu_init) */
+#endif
 
 /* The concurrent sweep (sp_sched.c): start takes the lists the barrier
    detached and sweeps them beside the mutators; wait, at the next barrier,
@@ -134,7 +166,37 @@ void (*sp_gc_conc_sweep_hook)(int full, int str_sweep, int str_major) = NULL;
 void (*sp_gc_conc_wait_hook)(void) = NULL;
 int sp_gc_conc_on = -1;          /* SPINEL_GC_CONC=0 turns the concurrent sweep off */
 int sp_gc_conc_promote = 0;      /* this cycle's mark promotes what it marks (the sweep is concurrent) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 size_t sp_gc_mk_bytes = 0, sp_gc_mk_young_bytes = 0;   /* bytes the mark reached, and of those the young ones */
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 SP_TLS int sp_gc_in_sweeper = 0; /* a sweeper thread: finalizers skip the per-worker byte accounting */
 /* ---- Collector-private globals ----
  * Under SP_MULTI_CTX the relocated ones are sp_ctx fields (macros in sp_ctx.h);
@@ -165,11 +227,71 @@ static sp_gc_hdr *sp_gc_old_heap = NULL;
 static SP_TLS void **sp_gc_mark_stack = NULL;
 static SP_TLS int sp_gc_mark_top = 0;
 #endif
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 static SP_TLS int sp_gc_mark_cap = 0;
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 /* What this thread's marking counted, folded into the totals when its
    drain ends (a shared counter per marked object would bounce a line
    between the markers on every object). */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 static SP_TLS size_t sp_gc_mkl_marked = 0, sp_gc_mkl_bytes = 0, sp_gc_mkl_young = 0;
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 static int sp_gc_par_mark = 0;   /* the drain is running on several threads */
 static SP_TLS int sp_gc_mk_is_collector=0;
 unsigned long long sp_gc_ph_mk_by_helpers=0, sp_gc_ph_mk_spills=0, sp_gc_ph_mk_takes=0;
@@ -185,9 +307,39 @@ static int sp_gc_max_bytes_init = 0;
 #define SP_GC_FULL_INTERVAL 8
 #define SP_GC_FULL_INTERVAL_MIN 1   /* the adaptive floor under the minor mark: every cycle full */
 #define SP_GC_PROMOTED_DEAD_CUT (1.0/16.0)   /* dead-at-full per minor, as a share of the live set */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 static int sp_gc_minors_since_full = 0;
 static double sp_gc_last_per_minor = 0;
 static int sp_gc_fulls_at_min = 0;
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 
 /* Major-collection cadence. A compile-time constant until the measurements in
    docs/internals/gc-string-minor-design.md showed it is where essentially all
@@ -195,7 +347,37 @@ static int sp_gc_fulls_at_min = 0;
    retained-heavy array workload). Runtime state, in this file, so the header
    every generated TU includes does not change. */
 #define SP_GC_FULL_INTERVAL_MAX 128
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 static int sp_gc_full_interval = SP_GC_FULL_INTERVAL;
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 /* What the last full sweep found LIVE in the old generation, and the slack a
    heap may grow past it before a full is forced. The adaptive interval bounds
    the TIME between full sweeps and nothing bounded the SPACE: a phase that
@@ -204,10 +386,76 @@ static int sp_gc_full_interval = SP_GC_FULL_INTERVAL;
    the interval's own correction is gated behind the full cycle it is
    postponing (#4076). A heap that really is live never trips this, because old
    stays where the last sweep left it. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 size_t sp_gc_old_live = 0;   /* what the last full found live in the old generation */
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 #define SP_GC_OLD_GROWTH_SLACK (4u * 1024u * 1024u)
 static int sp_gc_full_interval_fixed = 0;   /* SPINEL_GC_FULL_INTERVAL pins it */
+#ifdef SP_MULTI_CTX
+/* The interval an instance starts from: SPINEL_GC_FULL_INTERVAL when set,
+   read once by the constructor below; sp_gc_instance_init copies it into the
+   instance, whose own interval then adapts on its own heap. */
+static int sp_gc_full_interval_start = SP_GC_FULL_INTERVAL;
+#endif
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 int sp_gc_full_runs = 0;    /* read by GC.stat (lib/sp_cold.c) */
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 int sp_gc_trim_wanted = 0;  /* a full cycle asks the trimmer thread for a malloc_trim (sp_sched.c) */
 int sp_gc_trimmer_on = 0;   /* the trimmer thread is running */
 /* High-water mark of the remembered set, for GC.stat. A minor collection
@@ -215,7 +463,37 @@ int sp_gc_trimmer_on = 0;   /* the trimmer thread is running */
    of its old heap makes the minor do the full mark's work plus the
    bookkeeping -- which is the shape to check when a minor mark is SLOWER
    than the whole-heap one on some route. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 int sp_gc_rem_peak = 0;
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 
 /* Issue #755: bail out cleanly on OOM rather than returning NULL into a
    caller that would deref it next. */
@@ -300,7 +578,11 @@ __attribute__((constructor)) static void sp_gc_debug_env(void){
      sp_instance_create (no current ctx exists at process-constructor time). */
   { const char *ph=getenv("SPINEL_GC_PHASES"); sp_gc_ph_on=(ph&&*ph&&*ph!='0'); }
   { const char *fi=getenv("SPINEL_GC_FULL_INTERVAL");
+#ifdef SP_MULTI_CTX
+    if(fi&&*fi){ int n=atoi(fi); if(n>0&&n<=4096){ sp_gc_full_interval_start=n; sp_gc_full_interval_fixed=1; } } }
+#else
     if(fi&&*fi){ int n=atoi(fi); if(n>0&&n<=4096){ sp_gc_full_interval=n; sp_gc_full_interval_fixed=1; } } }
+#endif
   { const char *g=getenv("SPINEL_GC_VERIFY_GEN"); sp_gc_verify_gen=(g&&*g&&*g!='0');
     /* The default since 2026-09-12. What made it one: every test program
        clean under the generational verifier with stress on (every allocation
@@ -342,7 +624,13 @@ __attribute__((constructor)) static void sp_gc_debug_env(void){
     const char *sm = getenv("SPINEL_GC_STR_MAJOR");
     sp_gc_str_major_fixed = (sm && strcmp(sm, "fixed") == 0);
     sp_gc_str_major_sched = !(sm && strcmp(sm, "size") == 0); }
+#ifdef SP_MULTI_CTX
+  /* no instance exists yet: ask the environment, as sp_instance_create will */
+  { const char *v=getenv("SPINEL_GC_VERIFY");
+    if (v&&*v&&*v!='0') { signal(SIGSEGV, sp_gc_fault_report); signal(SIGBUS, sp_gc_fault_report); } }
+#else
   if (sp_gc_verify) { signal(SIGSEGV, sp_gc_fault_report); signal(SIGBUS, sp_gc_fault_report); }
+#endif
 }
 
 /* Tag byte preceding `obj`: 0xfe heap-unmarked -> 0xfc; 0xfc/0xff/0xfd/0xf1/
@@ -470,12 +758,72 @@ static void sp_gc_mark_drain_all(void) {
 /* What this thread's marking counted on the string side: bytes reached, and
    of those the young ones the mark promoted (the bitmap strings; a string
    too large for the slab is counted by its list sweep). */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 static SP_TLS size_t sp_gc_mkl_str = 0, sp_gc_mkl_str_young = 0;
 size_t sp_gc_mk_str_bytes = 0, sp_gc_mk_str_young_bytes = 0;
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 /* and the slab objects the mark promoted (their bytes; the list sweep counts
    its own promotions as it splices them) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 static SP_TLS size_t sp_gc_mkl_promo = 0;
 size_t sp_gc_mk_promo_bytes = 0;
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 /* A heap string the mark reached. A slab string's mark is a bit in its
    chunk, and the bit is also the "already marked" test: the marker byte
    stays 0xfe, since nothing resets a byte the sweep does not touch. A
@@ -611,23 +959,188 @@ else{void*obj=*e;if(obj)sp_gc_mark(obj);}}
   SP_GC_MK_PH(sp_gc_ph_mk_scan);
   if(vd){sp_gc_dbg_phase="?";sp_gc_dbg_ctx=NULL;}}
 
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 unsigned sp_gc_mark_gen = 0;
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 /* Set for the duration of a minor mark: an object already promoted is not
    walked, because the sweep does not free the old list on a minor cycle and
    the remembered set carries the old->young references the walk would miss. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 int sp_gc_minor = 0;
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 int sp_gc_minor_on = 1;   /* the constructor above reads SPINEL_GC_MINOR=0 */
 int sp_gc_verify_gen = 0;
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 int sp_gc_verify_gen_fail = 0;
 int sp_gc_verify_probe_on = 0, sp_gc_verify_probe_hit = 0;
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 /* Armed after a minor's sweep to ask each remembered holder whether it still
    reaches a young object (one the sweep kept young for a second look): with the
    probe on, sp_gc_mark records the answer and marks nothing. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 int sp_gc_young_probe_on = 0, sp_gc_young_probe_hit = 0;
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 /* This cycle's sweeps age survivors instead of promoting every one: a minor
    whose remembered set is intact. SPINEL_GC_AGE=0 turns aging off. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 int sp_gc_age_survivors = 0;
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 int sp_gc_age_on = 0;
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 size_t sp_gc_young_kept_bytes = 0;
 size_t sp_gc_npromoted = 0;
 unsigned sp_gc_verify_probe = 0;
@@ -637,6 +1150,21 @@ int sp_gc_rem_overflow = 0;
 void *sp_gc_pinned[SP_GC_PINNED_MAX];
 int sp_gc_npinned = 0;
 int sp_gc_pin_overflow = 0;
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 
 /* Sticky remembered entry; see the comment on sp_gc_pin_remembered in sp_gc.h
    for why the by-reference String ABI needs one. Same tag protocol as
@@ -728,7 +1256,37 @@ void sp_gc_wb_slow(void *obj) {
   else sp_gc_rem_overflow = 1;
 #endif
 }
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 int sp_gc_str_minor_only = 0;
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 /* Object-threshold retune, installed by sp_alloc.c. Running it INSIDE every
    collection (not only on the object-triggered wrapper) keeps the trigger
    tracking the live size whichever heap initiated the collect; the old
@@ -744,7 +1302,37 @@ void (*sp_gc_obj_retune_hook)(size_t before) = NULL;
    apart, which is why a per-byte cost ratio measured on one workload did not
    carry to another (#4384). Counted, the coefficients are properties of this
    code rather than of a program's allocation sizes. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 size_t sp_gc_ct_swept = 0, sp_gc_ct_marked = 0;
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 static void sp_gc_sweep_young(sp_gc_hdr **pp){
   size_t kept=0, promoted=0;
   while(*pp){sp_gc_hdr*h=*pp;SP_GC_CTR_ADD(sp_gc_ct_swept,1);if(h->marked!=sp_gc_mark_gen){*pp=h->next;if(h->recycle){h->recycle(h);}
@@ -892,11 +1480,71 @@ static void sp_gc_rem_invariant_cb(void *hp,void *arg){
     abort();
   }
 }
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 static int sp_gc_sweep_full_now=0;   /* the cycle the stop-the-world sweep tasks are for */
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 size_t sp_gc_ph_slab_freed_obj=0, sp_gc_ph_slab_freed_str=0;
 /* bytes of headers the pools hold, summed over the sweep of one cycle and
    folded into the live total the budget is sized from (sp_gc_parked_take) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 static size_t sp_gc_parked_acc=0;
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 size_t sp_gc_parked_take(void){ size_t v; 
 #ifdef SP_THREADS
   v=__atomic_exchange_n(&sp_gc_parked_acc,0,__ATOMIC_RELAXED);
@@ -918,7 +1566,37 @@ void sp_gc_sweep_chunks(int wid,int full){
 }
 /* the form the stop-the-world parallel sweep (sp_sched.c) runs per slot */
 void sp_gc_sweep_chunks_slot(int wid){ sp_gc_sweep_chunks(wid,sp_gc_sweep_full_now); }
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 static sp_gc_hdr **sp_gc_vg_cand; static size_t sp_gc_vg_n, sp_gc_vg_cap; static unsigned sp_gc_vg_gen;
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 static void sp_gc_vg_cand_cb(void *hp,void *arg){
   (void)arg; sp_gc_hdr *h=(sp_gc_hdr*)hp;
   if(!sp_gc_vg_cand||h->old||h->marked==sp_gc_vg_gen)return;
@@ -1055,9 +1733,39 @@ double sp_gc_ph_conc_wait = 0, sp_gc_ph_conc_wall = 0, sp_gc_ph_barrier = 0, sp_
 double sp_gc_ph_mk_roots = 0, sp_gc_ph_mk_fibers = 0,
        sp_gc_ph_mk_globals = 0, sp_gc_ph_mk_scan = 0;
 int sp_gc_ph_on = 0;
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 unsigned long long sp_gc_stat_collections=0;
 unsigned long long sp_gc_stat_fulls=0;
 double sp_gc_stat_seconds=0;
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 static double sp_gc_stat_now(void){
 #if defined(CLOCK_MONOTONIC)
   struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
@@ -1549,3 +2257,20 @@ void sp_gc_enforce_mem_limit(void){
   if(rss>sp_gc_max_bytes){fprintf(stderr,"unhandled exception: out of memory (RSS %zu MB exceeded SPINEL_MAX_HEAP_MB=%zu MB)\n",rss/(1024*1024),sp_gc_max_bytes/(1024*1024));exit(1);}
 #endif
 }
+
+#ifdef SP_MULTI_CTX
+/* The collector's per-instance state that does not start at zero, set up by
+   sp_instance_create with the new instance current. The remembered and pinned
+   sets are this instance's own arrays, sized by the config: overflowing either
+   is safe (the next collection marks the whole heap, which needs neither), so
+   a port trades a small array for more full marks, never for correctness. */
+void sp_gc_instance_init(int remembered_entries, int pinned_entries) {
+  sp_gc_full_interval = sp_gc_full_interval_start;
+  sp_gc_remembered_cap = remembered_entries > 0 ? remembered_entries : 0;
+  sp_gc_pinned_cap = pinned_entries > 0 ? pinned_entries : 0;
+  sp_gc_remembered = sp_gc_remembered_cap ? (void **)malloc(sizeof(void *) * (size_t)sp_gc_remembered_cap) : NULL;
+  sp_gc_pinned = sp_gc_pinned_cap ? (void **)malloc(sizeof(void *) * (size_t)sp_gc_pinned_cap) : NULL;
+  /* the Marshal vtable is per program, filled by its init (sp_tu_init) */
+  SP_CTX()->marshal_v = calloc(1, sizeof(sp_marshal_vt));
+}
+#endif

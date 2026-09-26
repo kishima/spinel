@@ -12291,15 +12291,15 @@ char *codegen_program(const NodeTable *nt) {
     int n = 0;
     for (int i = 0; i < c->nclasses; i++)
       if (class_is_exc_subclass(c, i)) n++;
-    buf_printf(&b, "const sp_int sp_exc_subclass_count = %d;\n", n);
+    buf_printf(&b, "SP_TU_STATIC const sp_int sp_exc_subclass_count = %d;\n", n);
     if (n > 0) {
-      buf_puts(&b, "const sp_int sp_exc_subclass_ids[] = {");
+      buf_puts(&b, "SP_TU_STATIC const sp_int sp_exc_subclass_ids[] = {");
       for (int i = 0; i < c->nclasses; i++)
         if (class_is_exc_subclass(c, i))
           buf_printf(&b, " %d,", i);
       buf_puts(&b, " };\n");
     } else {
-      buf_puts(&b, "const sp_int sp_exc_subclass_ids[] = { 0 };\n");
+      buf_puts(&b, "SP_TU_STATIC const sp_int sp_exc_subclass_ids[] = { 0 };\n");
     }
   }
 

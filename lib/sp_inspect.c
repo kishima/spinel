@@ -15,9 +15,11 @@
    #inspect, and the guard has to be one set of frames shared by the generated
    translation unit, the archive and the carried packages -- a per-TU copy would
    let a walk that crosses the boundary forget where it had been. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 SP_TLS sp_poly_recur_frame *sp_poly_recur_stack = NULL;
 SP_TLS int sp_poly_recur_top = 0;
 SP_TLS int sp_poly_recur_cap = 0;
+#endif
 /* Make room for at least `want` frames, doubling from 64. Off the hot path:
    a walk deep enough to reach the end of the buffer has already paid far more
    in its own recursion than this call costs. */
@@ -41,10 +43,12 @@ SP_COLD void sp_poly_recur_grow(int want) {
    half the table it is rebuilt from the live frames at a quarter load. Nothing
    here runs until a walk is deeper than the scan budget. */
 typedef struct { const void *a, *b; int kind, frame; } sp_poly_recur_slot;
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 static SP_TLS sp_poly_recur_slot *sp_poly_recur_ix = NULL;
 static SP_TLS int sp_poly_recur_ixcap = 0;    /* a power of two, or 0 before first use */
 static SP_TLS int sp_poly_recur_ixused = 0;   /* slots holding a frame, live or stale */
 SP_TLS int sp_poly_recur_ixtop = 0;
+#endif
 
 /* Multipliers for the slot hash: 2^64 / phi and two more odd constants of the
    same shape (xxHash's), so a pointer's bits spread across the word before the

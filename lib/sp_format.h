@@ -45,8 +45,10 @@ sp_Rational sp_str_to_r(const char *s);
 sp_Rational sp_str_to_r_strict(const char *s);   /* Kernel#Rational(String) */
 /* Kernel's `exception: false`: while set, an unparseable string sets
    sp_convert_failed instead of raising (defined in lib/sp_cold.c). */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern sp_bool sp_convert_soft;
 extern sp_bool sp_convert_failed;
+#endif
 sp_Rational sp_rational_add(sp_Rational a, sp_Rational b);
 sp_Rational sp_rational_sub(sp_Rational a, sp_Rational b);
 sp_Rational sp_rational_mul(sp_Rational a, sp_Rational b);

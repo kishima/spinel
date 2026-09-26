@@ -20,7 +20,9 @@ typedef int sp_bool;
 #define FALSE 0
 #endif
 
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 int sp_last_status = 0;
+#endif
 
 
 int sp_system_args(int argc, const char *const *argv) {

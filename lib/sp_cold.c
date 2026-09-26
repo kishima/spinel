@@ -46,8 +46,10 @@
 
 /* lib/sp_gc.c. Declared here rather than in sp_gc.h: that header is included
    by every generated TU, so adding to it recompiles the whole suite. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern int sp_gc_full_runs;
 extern int sp_gc_rem_peak;   /* lib/sp_gc.c: high-water mark of the remembered set */
+#endif
 
 /* execinfo.h (backtrace_symbols) is a glibc/Apple extension; not all libc
    implementations ship it. Detect availability by the toolchain macros so we
@@ -282,8 +284,10 @@ const char *sp_file_readlink(const char *path) {SP_GC_ROOT_STR(path);
 /* `exception: false` asks Kernel#Complex / #Rational for nil rather than a
    raise on an unparseable String. The parsers below set this instead of
    raising while it is on; the caller reads it back and answers nil (#3893). */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 sp_bool sp_convert_soft = 0;
 sp_bool sp_convert_failed = 0;
+#endif
 static sp_Complex sp_str_to_c_impl(const char *s, int strict) {
   double re = 0, im = 0;
   int parsed = 0;
@@ -336,7 +340,9 @@ sp_Complex sp_str_to_c_strict(const char *s) { return sp_str_to_c_impl(s, 1); }
 
 /* FNM_DOTMATCH mode for the walk below: hidden entries (and ".") match a
    non-dot pattern; ".." never does, as CRuby's glob. Set by the _dot wrapper. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 static int sp_glob_dotmatch = 0;
+#endif
 
 int sp_fnmatch1(const char *pat, const char *str) {
   while (*pat) {
@@ -1473,8 +1479,12 @@ sp_PolyArray *sp_str_chars_poly(const char *s) {SP_GC_ROOT_STR(s);
    treats as "nothing to format" -- the backtrace is simply empty. */
 #define backtrace_symbols(buf, n) ((char **)0)
 #endif
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 int sp_bt_enabled = 0;          /* set to 1 by debug-build main() */
+#endif
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 const char *sp_bt_srcfile = ""; /* toplevel .rb path, set by debug main() */
+#endif
 static int sp_bt_is_runtime(const char *n) {
   static const char *pfx[] = {
     "int_", "str_", "float_", "sym_", "gc_", "bigint", "sprintf", "raise",
@@ -3219,9 +3229,13 @@ sp_int sp_int_pow(sp_int base, sp_int exp) {
    sp_argf_obj are extern (sp_argf.h), defined by the generated main(). ---- */
 #include "sp_argf.h"
 
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 sp_StrArray *sp_argv_array_cache = NULL;
+#endif
 
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 void *sp_main_obj = NULL;
+#endif
 sp_RbVal sp_main_self(void) {
   void *m = __atomic_load_n(&sp_main_obj, __ATOMIC_ACQUIRE);
   if (!m) {
@@ -3598,13 +3612,23 @@ sp_RbVal sp_complex_abs2_v(sp_Complex a) {
   if (a.fl == 0) return sp_complex_comp_v(v, 0);
   return sp_box_float(v);
 }
+#ifndef SP_MULTI_CTX
 unsigned char sp_class_frozen_map[4096];
+#endif
 void sp_class_freeze_id(sp_int cls_id) {
   sp_int ix = cls_id >= 0 ? cls_id : (3900 - cls_id);
+#ifdef SP_MULTI_CTX
+  /* per instance, allocated on the first freeze (most programs never do) */
+  if (ix >= 0 && ix < 4096 && !sp_class_frozen_map)
+    sp_class_frozen_map = (unsigned char *)calloc(4096, 1);
+#endif
   if (ix >= 0 && ix < 4096) sp_class_frozen_map[ix] = 1;
 }
 sp_bool sp_class_frozen_id(sp_int cls_id) {
   sp_int ix = cls_id >= 0 ? cls_id : (3900 - cls_id);
+#ifdef SP_MULTI_CTX
+  if (!sp_class_frozen_map) return 0;
+#endif
   return (ix >= 0 && ix < 4096) ? (sp_bool)sp_class_frozen_map[ix] : 0;
 }
 
@@ -3752,7 +3776,9 @@ sp_File *sp_io_wait_events(sp_File *f, double timeout, sp_int kind) {SP_GC_ROOT(
 /* IO.select(read, write, error, timeout) -> [ready_read, ready_write,
    ready_error], or nil when the timeout expires first. A nil array stands for
    "watch nothing", so all three nil is just a sleep. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 sp_File *(*sp_user_to_io_hook)(sp_RbVal) = NULL;
+#endif
 static sp_File *sp_select_io_of(sp_RbVal v) {
   if (v.tag == SP_TAG_OBJ && v.cls_id == SP_BUILTIN_IO && v.v.p) return (sp_File *)v.v.p;
   /* A user object that answers #to_io names the handle to wait on -- CRuby
@@ -4435,7 +4461,9 @@ const char *sp_str_encode(const char *s, sp_RbVal dst, sp_RbVal src,
 static const char *const sp_warn_cats[] = {
   "deprecated", "experimental", "performance", "strict_unused_block", NULL
 };
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 static sp_bool sp_warn_flags[4] = { 0, 1, 0, 0 };
+#endif
 
 static int sp_warning_cat_idx(const char *cat) {
   for (int i = 0; sp_warn_cats[i]; i++)

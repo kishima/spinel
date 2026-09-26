@@ -107,17 +107,23 @@ extern sp_str_wslot_t sp_str_wslot[SP_MAX_WORKERS];
 extern sp_str_hdr *sp_str_heap;          /* young list head */
 extern size_t sp_str_heap_bytes;         /* young string-heap bytes */
 #endif
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern sp_str_hdr *sp_str_old;           /* old list head */
 extern size_t sp_str_old_bytes;          /* old string-heap bytes */
 #endif
+#endif
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern size_t sp_str_old_threshold;      /* old bytes that trigger a major sweep */
 extern size_t sp_str_old_threshold_init; /* recompute floor for the above */
+#endif
 #ifndef SP_MULTI_CTX
 extern size_t sp_str_threshold;          /* string-GC trigger (own heuristic) */
 extern size_t sp_str_threshold_init;     /* recompute floor */
 extern int    sp_str_stress_checked;     /* one-shot SPINEL_GC_STRESS check */
 #endif
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern int    sp_gc_stress_pin;          /* stress caps the retunes at the 2048 base (#3513) */
+#endif
 #ifdef SP_THREADS
 void sp_alloc_stress_init(void);         /* race-free one-shot stress check (pre-helpers) */
 void sp_alloc_floors_from_env(void);
@@ -148,7 +154,9 @@ struct sp_str_lcache_entry {
    yields a wrong length and sp_str_concat's memcpy overruns. Each worker keeps
    its own; it is cleared at every safepoint park (before a sweep can recycle a
    cached string's address) and by the string sweep on the collector. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern SP_TLS struct sp_str_lcache_entry sp_str_lcache[SP_STR_LCACHE_SIZE];
+#endif
 static inline unsigned sp_str_lcache_slot(const char *s) {
   uintptr_t k = (uintptr_t)s;
   return (unsigned)((k ^ (k >> 4) ^ (k >> 12)) & ((1u << SP_STR_LCACHE_BITS) - 1))
@@ -195,7 +203,9 @@ static inline void sp_str_lcache_drop(const char *s) {
    is read out; a demand-marked call site picks it up right after the call
    (resetting it to NULL first). Never read unless the analysis marked the
    site, so ordinary callers are untouched. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern SP_TLS void *_sp_ret_strbuf;
+#endif
 
 /* Cold; single definitions in sp_alloc.c. sp_str_sweep is wired to the GC via a
    constructor so it runs from sp_gc_collect regardless of which TU triggered
@@ -468,7 +478,9 @@ static inline char *sp_str_empty_binary(void) {
    site an expression later, so two workers in the same provider would
    otherwise hand each other the wrong length. The generated TU is compiled
    with the matching -DSP_THREADS, so both sides agree on the storage class. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern SP_TLS int sp_ffi_bin_len;
+#endif
 
 static inline const char *sp_str_from_bytes(const char *data, size_t len) {
   char *s = sp_str_alloc(len);
@@ -685,11 +697,15 @@ static inline sp_float sp_poly_as_float_or_nil(sp_RbVal v) {
 /* SPINEL_GC_OBJ_BUDGET=walk: the object budget is priced off the whole set a
    mark walks, not the object heap alone. Opt-in; see sp_gc_retune_object. */
 extern int sp_gc_obj_budget_mode;
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern size_t sp_gc_obj_alpha1024;
+#endif
 extern int sp_gc_str_major_fixed;
 extern int sp_gc_str_major_sched;
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern size_t sp_gc_str_majors;
 extern int sp_gc_obj_budget_fixed;
+#endif
 extern int sp_gc_str_budget_fixed;
 #ifndef SP_MULTI_CTX  /* sp_ctx-field macros under SP_MULTI_CTX (sp_ctx.h) */
 extern size_t sp_gc_threshold;
@@ -728,7 +744,9 @@ static void __attribute__((noinline, cold)) sp_raise_frozen_array_v(sp_RbVal v) 
 /* Top-level self, the main object (#4926): a bare Object allocated on first
    use, whose to_s / inspect answer "main". sp_main_obj is its pointer, a GC
    root marked with the runtime globals; lib/sp_cold.c. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern void *sp_main_obj;
+#endif
 sp_RbVal sp_main_self(void);
 
 /* sp_PolyArray: a growable array of boxed values. The first
@@ -750,8 +768,10 @@ static inline void sp_PolyArray_fin(void *p) { sp_PolyArray *a = (sp_PolyArray *
    its recycler) where an unpooled one dies in its chunk's bitmap. */
 /* The pool is per thread (sp_alloc.c says why), so the pop is a plain
    list operation on both builds. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern SP_TLS sp_gc_hdr *sp_polyarr_pool_head;
 extern SP_TLS long sp_polyarr_pool_count;
+#endif
 void sp_PolyArray_pool_recycle(sp_gc_hdr *h);
 static inline sp_PolyArray *sp_PolyArray_new(void) {
   if (sp_slab_on > 0) {
@@ -1003,7 +1023,9 @@ sp_RbVal sp_box_openstruct(sp_OpenStruct *o);
 
 /* ---- class-frozen bitmap (Class#freeze / #frozen?): state stays
    per-process like sp_argv, extern instead of spinel_rt.h-static. ---- */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern unsigned char sp_class_frozen_map[4096];   /* one definition: lib/sp_cold.c */
+#endif
 void sp_class_freeze_id(sp_int cls_id);
 sp_bool sp_class_frozen_id(sp_int cls_id);
 

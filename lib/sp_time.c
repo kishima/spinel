@@ -461,9 +461,17 @@ const char *sp_time_strftime(sp_Time t, const char *fmt) {SP_GC_ROOT_STR(fmt);
      resolves all three kinds. */
   struct tm tmv;
   sp_time_vtm(t, &tmv, NULL, NULL);
+#ifdef SP_MULTI_CTX
+  /* a static buffer would be shared by every instance's thread: the render
+     goes to a per-call block instead (from the instance's pool) */
+  char *out = (char *)malloc(8192);
+  const size_t out_cap = 8192;
+#else
   static char out[8192];
+  const size_t out_cap = sizeof(out);
+#endif
   size_t oi = 0;
-  for (const char *p = fmt; *p && oi < sizeof(out) - 128; p++) {
+  for (const char *p = fmt; *p && oi < out_cap - 128; p++) {
     if (*p != '%') { out[oi++] = *p; continue; }
     const char *tok = p++;
     int upcase = 0, downcase = 0, pad0 = 0, padsp = 0, nopad = 0, colon = 0;
@@ -480,7 +488,12 @@ const char *sp_time_strftime(sp_Time t, const char *fmt) {SP_GC_ROOT_STR(fmt);
     while ((*p == 'E' || *p == 'O') && p[1]) p++;
     char d = *p;
     /* a format ending in a bare `%` is invalid, not a literal one (#3705) */
-    if (!d) sp_raise_cls("ArgumentError", "invalid format");
+    if (!d) {
+#ifdef SP_MULTI_CTX
+      free(out);   /* the raise does not come back */
+#endif
+      sp_raise_cls("ArgumentError", "invalid format");
+    }
     char val[128]; val[0] = 0;
     if (d == '%') { val[0] = '%'; val[1] = 0; }
     else if (d == 's') snprintf(val, sizeof val, "%lld", (long long)t.tv_sec);
@@ -582,13 +595,17 @@ const char *sp_time_strftime(sp_Time t, const char *fmt) {SP_GC_ROOT_STR(fmt);
     size_t vl = strlen(val);
     if (width > 0 && !nopad && vl < (size_t)width) {
       char pc = padsp ? ' ' : '0';
-      for (size_t k = vl; k < (size_t)width && oi < sizeof(out) - 2; k++) out[oi++] = pc;
+      for (size_t k = vl; k < (size_t)width && oi < out_cap - 2; k++) out[oi++] = pc;
     }
     (void)tok;
-    for (size_t k = 0; k < vl && oi < sizeof(out) - 2; k++) out[oi++] = val[k];
+    for (size_t k = 0; k < vl && oi < out_cap - 2; k++) out[oi++] = val[k];
   }
   out[oi] = 0;
+#ifdef SP_MULTI_CTX
+  { const char *r = sp_str_dup_external(out); free(out); return r; }
+#else
   return sp_str_dup_external(out);
+#endif
 }
 
 /* RFC 3339 zone suffix: "Z" for a UTC time, "+HH:MM" otherwise. `off` is

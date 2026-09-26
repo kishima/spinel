@@ -31,8 +31,10 @@ SP_TLS const char *sp_re_match_str = NULL;
 SP_TLS const char *sp_re_match_pre = NULL;
 SP_TLS const char *sp_re_match_post = NULL;
 #endif
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 static SP_TLS int sp_re_pp_span[2] = {-1, -1};
 const char *sp_re_startup_err = NULL;
+#endif
 
 /* Stop-the-world support: push this worker's live match-register strings onto its
    GC root stack so a collector marks them while the worker is parked at a

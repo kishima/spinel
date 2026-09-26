@@ -255,7 +255,9 @@ sp_int sp_io_sysopen(const char *path, sp_int flags, sp_int perm);
    main() installs it here, the same shape as sp_user_exc_parent_fn and the
    sp_json_*_fn hooks. NULL when the program defines no #to_io, which is when
    an element that is not an IO is the TypeError it always was. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern sp_File *(*sp_user_to_io_hook)(sp_RbVal);
+#endif
 
 #ifdef SP_MULTI_CTX
 /* A path-opened file as a stdio stream over the instance's backend handle

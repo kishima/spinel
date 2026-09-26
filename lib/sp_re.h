@@ -59,7 +59,9 @@ extern SP_TLS const char *sp_re_match_post;
 #endif
 const char *sp_re_pre_match(void);   /* $` , built on demand */
 const char *sp_re_post_match(void);  /* $' , built on demand */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern const char *sp_re_startup_err;
+#endif
 
 /* Stop-the-world support: push this worker's live match-register strings as GC
    roots (for the collector to mark while the worker is parked). See sp_re.c. */

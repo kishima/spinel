@@ -182,26 +182,37 @@ typedef struct { int nv; int np; } sp_gc_frame_hdr;
    assignment inside a larger expression. The statement expression evaluates the
    object once, which a comma form would not. */
 #define SP_WBO(x) ({ __typeof__(x) _sp_wbo = (x); sp_gc_wb((void *)_sp_wbo); _sp_wbo; })
+#ifdef SP_MULTI_CTX
+/* per-instance arrays sized by sp_instance_config (sp_ctx.h) */
+#define SP_GC_REMEMBERED_MAX (SP_CTX()->gc_remembered_cap)
+#else
 #define SP_GC_REMEMBERED_MAX 65536
 extern void *sp_gc_remembered[SP_GC_REMEMBERED_MAX];
 extern int sp_gc_nremembered;
 extern int sp_gc_rem_overflow;
+#endif
 extern int sp_gc_minor_on;   /* read by sp_gc_wb below; set once before main */
 /* SPINEL_GC_OBJ_BUDGET=walk: the object collection budget is priced off the
    whole set a mark walks (objects + strings) rather than the object heap
    alone. Set once before main, beside the modes above; read by
    sp_gc_retune_object, which is where the reasoning lives. */
 extern int sp_gc_obj_budget_mode;   /* 0 obj, 1 walk, 2 gated (default) */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern size_t sp_gc_obj_alpha1024;  /* the last gate decision, in 1024ths */
+#endif
 extern int sp_gc_str_major_fixed;
 extern int sp_gc_str_major_sched;
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern size_t sp_gc_str_majors;
+#endif
 extern int sp_gc_obj_budget_fixed;
 extern int sp_gc_str_budget_fixed;
 /* Set for the duration of the string sweep hook on a minor cycle: only the
    young string list may be swept, because the mark that just ran did not
    walk old objects and so did not reach the strings they hold. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern int sp_gc_str_minor_only;
+#endif
 /* The barrier proper. Out of line and behind the mode test: with the minor
    mark off, which is the default, every store site pays one predictable
    branch instead of carrying the tag protocol and the remembered-set push
@@ -231,10 +242,14 @@ void sp_gc_pin_remembered_slow(void *obj);
 static inline void sp_gc_pin_remembered(void *obj) {
   if (__builtin_expect(sp_gc_minor_on, 1)) sp_gc_pin_remembered_slow(obj);
 }
+#ifdef SP_MULTI_CTX
+#define SP_GC_PINNED_MAX (SP_CTX()->gc_pinned_cap)
+#else
 #define SP_GC_PINNED_MAX 16384
 extern void *sp_gc_pinned[SP_GC_PINNED_MAX];
 extern int sp_gc_npinned;
 extern int sp_gc_pin_overflow;
+#endif
 static inline void sp_gc_wb(void *obj) {
   /* Nothing reads the remembered set unless a minor mark runs, and whether one
      can is decided once, from the environment, before main. So with the
@@ -286,7 +301,9 @@ extern sp_gc_hdr *sp_gc_heap;
 #endif
 #endif
 /* Current mark generation (see sp_gc_hdr.marked in sp_types.h). */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern unsigned sp_gc_mark_gen;
+#endif
 extern void (*sp_gc_obj_retune_hook)(size_t before);
 #ifndef SP_MULTI_CTX  /* under SP_MULTI_CTX these are sp_ctx-field macros (sp_ctx.h) */
 extern size_t sp_gc_bytes;
@@ -299,9 +316,11 @@ extern int sp_gc_cycle;
    was no counter to tell the two apart -- which is where the diagnosis in
    #4352 stopped. One clock pair and two increments per COLLECTION, so they
    are always kept; only the printing is gated. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern unsigned long long sp_gc_stat_collections;
 extern unsigned long long sp_gc_stat_fulls;
 extern double sp_gc_stat_seconds;
+#endif
 #ifndef SP_MULTI_CTX  /* under SP_MULTI_CTX this is an sp_ctx-field macro (sp_ctx.h) */
 extern void (*sp_gc_mark_suspended_fibers_hook)(void);
 #endif
@@ -463,22 +482,33 @@ extern void *sp_gc_dbg_ctx;
 void sp_gc_mark(void *obj);
 void sp_gc_mark_all(void);
 void sp_gc_mark_drain(void);
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern int sp_gc_minor;
 extern int sp_gc_young_probe_on, sp_gc_young_probe_hit;
-extern int sp_gc_age_survivors, sp_gc_age_on, sp_gc_root_phase;
+#endif
+extern int sp_gc_age_on;
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+extern int sp_gc_age_survivors, sp_gc_root_phase;
+#endif
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern size_t sp_gc_old_live;
 extern size_t sp_gc_young_kept_bytes, sp_gc_npromoted;
+#endif
 extern int sp_gc_minor_on;
 extern int sp_gc_verify_gen;
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern int sp_gc_verify_gen_fail;
 extern int sp_gc_verify_probe_on, sp_gc_verify_probe_hit;
 extern unsigned sp_gc_verify_probe;
+#endif
 /* Per-phase collector time, in seconds, cumulative (SPINEL_GC_PHASES=1; all
    zero when it is off). sp_gc_stat_seconds is their sum plus the bookkeeping
    between them. Reported by sp_alloc.c, which is where the stats line lives. */
 /* Objects marked and slots swept since the process started. Counts are what
    the two phases' costs are actually per; see sp_gc_sweep_young. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern size_t sp_gc_ct_swept, sp_gc_ct_marked;
+#endif
 extern double sp_gc_ph_mark, sp_gc_ph_oldsweep, sp_gc_ph_slotsweep,
               sp_gc_ph_rembclear, sp_gc_ph_strsweep, sp_gc_ph_trim;
 /* The mark, split the way sp_gc_mark_all walks: this worker's own root stack,

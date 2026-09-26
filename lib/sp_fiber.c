@@ -343,7 +343,9 @@ static void sp_fiber_fault_handler(int sig, siginfo_t *si, void *uctx) {
   }
   signal(sig, SIG_DFL);
 }
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 void (*sp_stack_overflow_raise_fn)(void) = 0;
+#endif
 SP_TLS char *sp_thread_stack_lo = 0;
 SP_TLS char *sp_thread_stack_hi = 0;
 
@@ -425,7 +427,9 @@ static void sp_fiber_fault_arm(void) {
    stack it overflows is the thread's own, and the handler is what turns that
    into SystemStackError. Fiber creation and worker startup arm it too, so
    this is a no-op once either has run. */
+#ifndef SP_MULTI_CTX  /* a no-op inline under SP_MULTI_CTX (sp_fiber.h) */
 void sp_stack_guard_init(void) { sp_fiber_fault_arm(); }
+#endif
 
 /* ---- the stack the program body runs on -------------------------------
    The OS gives a process one stack and decides how big: 8 MB on macOS, and
