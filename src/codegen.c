@@ -11010,6 +11010,33 @@ static void ext_generate_cruby_shim(Compiler *c) {
 }
 
 
+/* File-scope slots whose starting value is a nil SENTINEL rather than zero
+   (SP_INT_NIL, the float NaN, the poly {SP_TAG_NIL}, the no-symbol -1). A
+   static initializer like that puts the slot in .data -- on a small target,
+   initialized internal RAM that cannot be placed elsewhere. Under
+   SP_MULTI_CTX every entry clears the TU's statics first
+   (sp_reset_tu_statics), so the sentinel is written there instead and the
+   slot is plain zeroed storage that SP_TU_BSS can place (SP_TU_NIL_SLOT,
+   spinel_rt.h). The default build keeps the initializer: no reset runs there.
+   The reset also makes a second run of the program in a fresh instance start
+   these at nil, as the pointer slots already did. */
+static Buf g_tu_nil_reset;
+static void emit_tu_nil_slot(Compiler *c, Buf *b, TyKind t, const char *name, const char *init) {
+  int zero = sp_streq(init, "NULL") || sp_streq(init, "0") || sp_streq(init, "{0}") ||
+             strstr(init, "){0}") != NULL;
+  if (zero) {
+    buf_puts(b, "static ");
+    emit_ctype(c, t, b);
+    buf_printf(b, " %s = %s;\n", name, init);
+    return;
+  }
+  buf_puts(b, "SP_TU_NIL_SLOT(");
+  emit_ctype(c, t, b);
+  buf_printf(b, ", %s, %s);\n", name, init);
+  buf_printf(&g_tu_nil_reset, "  %s = %s;\n", name,
+             t == TY_POLY ? "sp_box_nil()" : t == TY_FLOAT ? "sp_float_nil()" : init);
+}
+
 /* The head of every entry form under SP_MULTI_CTX: install this TU's
    per-instance hooks (sp_tu_ctx_init), then clear its file-scope statics
    (sp_reset_tu_statics, when the program has any). --persistent-statics moves
@@ -11031,6 +11058,7 @@ static void emit_tu_ctx_init(Buf *body) {
 }
 
 char *codegen_program(const NodeTable *nt) {
+  free(g_tu_nil_reset.p); memset(&g_tu_nil_reset, 0, sizeof g_tu_nil_reset);
   Compiler *c = comp_new(nt);
   analyze_program(c);
   /* From here on a yield reads the type of the block spliced at THIS site,
@@ -11318,10 +11346,11 @@ char *codegen_program(const NodeTable *nt) {
       for (int i = 0; i < ns; i++) {
         size_t sl = c->symbol_lens ? c->symbol_lens[i] : strlen(c->symbols[i]);
         if (sl <= strlen(c->symbols[i])) continue;
-        buf_printf(&b, "static struct { sp_str_hdr h; unsigned char m; char d[%zu]; } _sym_%d = "
-                       "{ { NULL, %zu, %zu, 0 }, 0xf1, \"", sl + 1, i, sl + 1, sl);
-        emit_c_escaped_n(&b, c->symbols[i], sl);
-        buf_puts(&b, "\" };\n");
+        /* const, header precomputed: the same object a frozen literal is */
+        buf_printf(&b, "static const struct { sp_str_hdr h; unsigned char m; char d[%zu]; } _sym_%d = ",
+                   sl + 1, i);
+        emit_frozen_literal_init(&b, c->symbols[i], sl);
+        buf_puts(&b, ";\n");
       }
       buf_printf(&b, "static const char *const sp_sym_names[%d] = {", ns);
       for (int i = 0; i < ns; i++) {
@@ -11991,9 +12020,9 @@ char *codegen_program(const NodeTable *nt) {
                        : t == TY_POLY  ? "{SP_TAG_NIL, 0, {0}}"
                        : t == TY_FLOAT ? "SP_FLOAT_NIL_CONST"   /* sp_float_nil() is a call, not a constant */
                        : default_value(t);
-      buf_puts(&b, "static ");
-      emit_ctype(c, t, &b);
-      buf_printf(&b, " cvar_%s_%s = %s;\n", ci->name, ci->cvars[j] + 2, init);
+      char nm[512];
+      snprintf(nm, sizeof nm, "cvar_%s_%s", ci->name, ci->cvars[j] + 2);
+      emit_tu_nil_slot(c, &b, t, nm, init);
     }
   }
 
@@ -12002,8 +12031,11 @@ char *codegen_program(const NodeTable *nt) {
   for (int i = 0; i < c->nclasses; i++) {
     ClassInfo *ci = &c->classes[i];
     for (int j = 0; j < ci->nsg_readers; j++)
-      buf_printf(&b, "static sp_RbVal sg_%s_%s = {SP_TAG_NIL, 0, {0}};\n",
-                 ci->name, ci->sg_readers[j]);
+    {
+      char nm[512];
+      snprintf(nm, sizeof nm, "sg_%s_%s", ci->name, ci->sg_readers[j]);
+      emit_tu_nil_slot(c, &b, TY_POLY, nm, "{SP_TAG_NIL, 0, {0}}");
+    }
   }
 
   /* module/class-level instance variables (accessed from a `def self.X`):
@@ -12021,9 +12053,9 @@ char *codegen_program(const NodeTable *nt) {
                        : (t == TY_FLOAT) ? "SP_FLOAT_NIL_CONST"
                        : (t == TY_STRING) ? "NULL"
                        : (is_scalar_ret(t)) ? default_value(t) : "0";
-      buf_puts(&b, "static ");
-      emit_ctype(c, t, &b);
-      buf_printf(&b, " civ_%s_%s = %s;\n", ci->name, iv_c(ci->ivars[j] + 1), init);
+      char nm[512];
+      snprintf(nm, sizeof nm, "civ_%s_%s", ci->name, iv_c(ci->ivars[j] + 1));
+      emit_tu_nil_slot(c, &b, t, nm, init);
     }
   }
 
@@ -12223,9 +12255,9 @@ char *codegen_program(const NodeTable *nt) {
   for (int i = 0; i < c->ngvars; i++) {
     LocalVar *lv = &c->gvars[i];
     if (!is_scalar_ret(lv->type)) continue;
-    buf_puts(&b, "static ");
-    emit_ctype(c, lv->type, &b);
-    buf_printf(&b, " gv_%s = %s;\n", lv->name,
+    char nm[512];
+    snprintf(nm, sizeof nm, "gv_%s", lv->name);
+    emit_tu_nil_slot(c, &b, lv->type, nm,
                lv->type == TY_RANGE ? "{0}" :
                lv->type == TY_POLY  ? "{SP_TAG_NIL, 0, {0}}" :
                /* A global read before its first write is nil, so the slot
@@ -12266,14 +12298,16 @@ char *codegen_program(const NodeTable *nt) {
        (#3361). An int carrier is enough -- the reads fold to nil on their own,
        they just have to have something to evaluate. */
     if (lv->type == TY_NIL) {
-      buf_printf(&b, "static sp_int cst_%s = SP_INT_NIL;\n", lv->name);
+      char nm[512];
+      snprintf(nm, sizeof nm, "cst_%s", lv->name);
+      emit_tu_nil_slot(c, &b, TY_INT, nm, "SP_INT_NIL");
       if (lv->init_guarded) buf_printf(&b, "static int sp_init_in_progress_%s;\n", lv->name);
       continue;
     }
     if (!is_scalar_ret(lv->type)) continue;
-    buf_puts(&b, "static ");
-    emit_ctype(c, lv->type, &b);
-    buf_printf(&b, " cst_%s = %s;\n", lv->name,
+    char nm[512];
+    snprintf(nm, sizeof nm, "cst_%s", lv->name);
+    emit_tu_nil_slot(c, &b, lv->type, nm,
                lv->type == TY_RANGE ? "{0}" :
                lv->type == TY_POLY  ? "{SP_TAG_NIL, 0, {0}}" :
                lv->type == TY_FLOAT ? "SP_FLOAT_NIL_CONST" :   /* the constant spelling of the float sentinel */
@@ -12524,10 +12558,14 @@ char *codegen_program(const NodeTable *nt) {
      no longer exists. */
   {
     int has_reset = (g_tu_reset_globals && g_tu_reset_globals[0]) ||
-                    (g_pool_classes && g_pool_classes->n > 0);
+                    (g_pool_classes && g_pool_classes->n > 0) ||
+                    g_tu_nil_reset.len > 0;
     if (has_reset) {
       buf_puts(body, "#ifdef SP_MULTI_CTX\n");
       buf_puts(body, "static void sp_reset_tu_statics(void) {\n");
+      /* the nil sentinels first (emit_tu_nil_slot); the pointer clears below
+         may write some of the same poly slots again, harmlessly */
+      if (g_tu_nil_reset.len > 0) buf_puts(body, g_tu_nil_reset.p);
       if (g_tu_reset_globals && g_tu_reset_globals[0]) buf_puts(body, g_tu_reset_globals);
       if (g_pool_classes) {
         for (int i = 0; i < g_pool_classes->n; i++) {

@@ -103,10 +103,6 @@ sp_process.o sp_err_buf SCRATCH          # Process.spawn error text
 sp_process_status.o sp_status_buf SCRATCH  # Process::Status#inspect text
 sp_random.o sp_random_auto_ctr RO        # seed salt: any value is correct
 sp_str.o ops RO                # operator name table
-sp_str.o sp_char_cache RO      # one-byte strings, filled once with fixed values
-sp_str.o sp_char_cache_init RO
-sp_str.o sp_hdr_char_cache RO  # the same with headers, filled once with fixed values
-sp_str.o sp_hdr_char_cache_init RO
 sp_time.o names RO             # month / weekday names
 
 # --- modules outside an instance ---
