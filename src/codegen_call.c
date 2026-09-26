@@ -18074,7 +18074,7 @@ int emit_method_tramp_fn(Compiler *c, Scope *tm, int shift, const char *fname,
   }
   if (needs_slot && !g_needs_proc_poly_argslot) {
     g_needs_proc_poly_argslot = 1;
-    buf_puts(&g_proc_protos, "extern SP_TLS sp_RbVal _sp_proc_poly_args[SP_PROC_ARG_SLOTS];\n");
+    buf_puts(&g_proc_protos, "#ifndef SP_MULTI_CTX\nextern SP_TLS sp_RbVal _sp_proc_poly_args[SP_PROC_ARG_SLOTS];\n#endif\n");
   }
   /* A rest parameter followed by a post-rest positional, a `**kwrest`, or
      a REQUIRED keyword cannot ride this fixed positional cast: the

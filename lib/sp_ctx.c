@@ -32,6 +32,10 @@ static __thread sp_ctx *g_sp_ctx = NULL;
 
 sp_ctx *sp_ctx_current(void)          { return g_sp_ctx; }
 int    *sp_ctx_last_status(void)      { return &g_sp_ctx->last_status; }   /* $? (sp_system.h) */
+/* The :binstr / :cbinstr byte count an FFI function publishes, for host C that
+   does not include the runtime's headers (it cannot name the ctx field): set
+   *sp_ctx_ffi_bin_len() where the default build sets sp_ffi_bin_len. */
+int    *sp_ctx_ffi_bin_len(void)      { return &g_sp_ctx->ffi_bin_len; }
 /* the regexp engine's compile-error handler (re_compile.c cannot include this
    header's types, so it asks for the slot) */
 void  (**sp_ctx_re_error_handler(void))(const char *) { return &g_sp_ctx->re_error_handler; }

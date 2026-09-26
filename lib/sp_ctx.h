@@ -334,6 +334,11 @@ typedef struct {
 } sp_instance_config;
 
 sp_ctx *sp_instance_create(const sp_instance_config *cfg);
+/* Host-side reach into the current instance for C that cannot include this
+   header (it would clash with the host's own types): the FFI :binstr length
+   an FFI function publishes, and $?. */
+int    *sp_ctx_ffi_bin_len(void);
+int    *sp_ctx_last_status(void);
 void    sp_instance_destroy(sp_ctx *ctx);
 /* Depth high-waters of the instance's begin/rescue and catch stacks, for
  * port-side sizing of SP_EXC_STACK_MAX / SP_CATCH_STACK_MAX. Zeroes until the

@@ -11200,7 +11200,8 @@ char *codegen_program(const NodeTable *nt) {
     /* sp_alloc.h already declares it, and declares it SP_TLS in the threaded
        build -- re-declaring it here without the storage class is a conflict,
        so name it the same way. */
-    if (any_binstr) buf_puts(&b, "extern SP_TLS int sp_ffi_bin_len;\n");
+    /* under SP_MULTI_CTX the side channel is the instance's (sp_ctx.h names it) */
+    if (any_binstr) buf_puts(&b, "#ifndef SP_MULTI_CTX\nextern SP_TLS int sp_ffi_bin_len;\n#endif\n");
 
     /* native_func externs (Path B): prototype each bound C symbol so the
        generated TU needs no package header. Deduped by symbol (generate and

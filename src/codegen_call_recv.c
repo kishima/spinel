@@ -5319,7 +5319,7 @@ int emit_hash_call(Compiler *c, int id, Buf *b) {
         hdp_done[hdp_v] = 1;
         if (!g_needs_proc_poly_argslot) {
           g_needs_proc_poly_argslot = 1;
-          buf_puts(&g_proc_protos, "extern SP_TLS sp_RbVal _sp_proc_poly_args[SP_PROC_ARG_SLOTS];\n");
+          buf_puts(&g_proc_protos, "#ifndef SP_MULTI_CTX\nextern SP_TLS sp_RbVal _sp_proc_poly_args[SP_PROC_ARG_SLOTS];\n#endif\n");
         }
         const char *kexpr = hdp_v == 0 ? "(sp_sym)sp_poly_to_i(_sp_proc_poly_args[1])"
                           : hdp_v == 1 ? "_sp_proc_poly_args[1].v.s"
