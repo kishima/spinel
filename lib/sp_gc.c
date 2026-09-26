@@ -212,6 +212,22 @@ SP_TLS int sp_gc_in_sweeper = 0; /* a sweeper thread: finalizers skip the per-wo
 #ifndef SP_GC_MARK_STACK_MAX
 #define SP_GC_MARK_STACK_MAX (1024*64)
 #endif
+/* How far the work list may double before a full one falls back to recursing
+   through the scan hook (sp_gc_mark). A port that would rather spend C stack
+   than pool on a deep graph sets this to SP_GC_MARK_STACK_MAX (no growth). */
+#ifndef SP_GC_MARK_STACK_LIMIT
+#define SP_GC_MARK_STACK_LIMIT (1<<28)
+#endif
+/* The grow itself. Under SP_MULTI_CTX realloc is the instance's allocator,
+   which ends the program when its pool is exhausted; a mark stack that cannot
+   grow should recurse instead, as it does on a hosted heap, so it asks the
+   pool without that consequence. */
+#ifdef SP_MULTI_CTX
+void *sp_mem_try_realloc(void *p, size_t n);   /* sp_ctx.c: NULL on exhaustion */
+#define SP_GC_MARK_REALLOC(p, n) sp_mem_try_realloc((p), (n))
+#else
+#define SP_GC_MARK_REALLOC(p, n) realloc((p), (n))
+#endif
 #ifndef SP_MULTI_CTX
 static int sp_gc_verify = 0;
 static sp_gc_hdr *sp_gc_old_heap = NULL;
@@ -896,7 +912,7 @@ void sp_gc_mark(void*obj){if(!obj)return;unsigned char pm=((unsigned char*)obj)[
     if(sp_gc_par_mark){sp_gc_mark_spill();}
     else
 #endif
-    if(sp_gc_mark_cap<(1<<28)){int nc=sp_gc_mark_cap*2;void**ns=(void**)realloc(sp_gc_mark_stack,sizeof(void*)*(size_t)nc);if(ns){sp_gc_mark_stack=ns;sp_gc_mark_cap=nc;}}}
+    if(sp_gc_mark_cap<SP_GC_MARK_STACK_LIMIT){int nc=sp_gc_mark_cap*2;void**ns=(void**)SP_GC_MARK_REALLOC(sp_gc_mark_stack,sizeof(void*)*(size_t)nc);if(ns){sp_gc_mark_stack=ns;sp_gc_mark_cap=nc;}}}
 if(sp_gc_mark_stack&&sp_gc_mark_top<sp_gc_mark_cap){sp_gc_mark_stack[sp_gc_mark_top++]=obj;}
 else{h->scan(obj);}}}
 /* The thread's counts, folded in. The collector folds its own at the end of

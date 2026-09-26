@@ -74,6 +74,13 @@ void sp_mem_free(void *p) {
   if (c && c->mem_dealloc) c->mem_dealloc(c->mem_ud, p);
   else free(p);
 }
+/* realloc through the instance's backend that reports exhaustion instead of
+   ending the program: for a caller with a fallback (the GC mark stack, which
+   recurses when it cannot grow). */
+void *sp_mem_try_realloc(void *p, size_t n) {
+  sp_ctx *c = g_sp_ctx;
+  return (c && c->mem_realloc) ? c->mem_realloc(c->mem_ud, p, n) : realloc(p, n);
+}
 char *sp_mem_strdup(const char *s) {
   if (!s) return NULL;
   size_t len = strlen(s) + 1;
