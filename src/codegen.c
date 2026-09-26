@@ -12589,16 +12589,20 @@ char *codegen_program(const NodeTable *nt) {
     /* Layer-1 extension emission (ext-design.md): the toplevel body brackets
        into the host-callable init function instead of main, and a tiny
        try-frame helper wraps the exception protocol so a hand-written shim
-       never reaches into runtime statics (M0 finding 1). */
+       never reaches into runtime statics (M0 finding 1). The class comes from
+       the frame's own slot, as the message does: a raise fills both
+       (sp_raise_cls, sp_raise_stack_overflow), and reading sp_last_exc_cls
+       instead kept that initialised static -- one word of .data, internal
+       RAM on a port -- alive in every ext program that has no rescue. */
     buf_printf(body,
       "int %s_try(void (*fn)(void *), void *ctx, const char **cls, const char **msg) {\n"
       "  sp_exc_check_depth();\n"
       "  sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;\n"
-      "  sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;\n"
+      "  sp_exc_msg[sp_exc_top] = 0; sp_exc_cls[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;\n"
       "  if (setjmp(sp_exc_stack[sp_exc_top - 1]) == 0) { fn(ctx); sp_exc_top--; return 0; }\n"
       "  sp_exc_top--;\n"
       "  sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];\n"
-      "  if (cls) *cls = (const char *)sp_last_exc_cls;\n"
+      "  if (cls) *cls = sp_exc_cls[sp_exc_top] ? sp_exc_cls[sp_exc_top] : \"\";\n"
       "  if (msg) *msg = sp_exc_msg[sp_exc_top] ? sp_exc_msg[sp_exc_top] : \"\";\n"
       "  return 1;\n}\n", g_ext_init_name);
     buf_printf(body, "void %s(void){\n", g_ext_init_name);
