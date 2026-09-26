@@ -389,3 +389,47 @@ field.
 - `SP_GC_MARK_STACK_LIMIT` bounds how far the mark work list may double;
   under SP_MULTI_CTX a failed grow falls back to recursion instead of ending
   the instance.
+
+## Ext programs (`--ext-init`) under SP_MULTI_CTX
+
+An ext program is a library: the host calls `Init_<name>()` once, then the
+program's typed entries (`--ext-entry Mod.meth`) as often as it likes. It is
+the upstream replacement for `--no-main` / `--entry` (a VM whose top level
+runs the whole program is simply an ext program with no entries), and for
+`--persistent-statics` (the top level runs once, in init, so module state
+lives between entry calls without any flag).
+
+Upstream links one ext program per image: the program-hook family
+(`sp_sym_to_s`, `sp_sym_intern_n`, `sp_sym_intern`, `sp_class_to_s`) and the
+exception/proc machinery are exported so the host TU resolves to them by
+symbol, and a second ext program collides at link. Under SP_MULTI_CTX an ext
+program goes through the same path as a `--no-main` program (T4-0 above):
+
+- The routed functions are already `SP_TU_STATIC`. The four hooks are emitted
+  with `SP_EXT_HOOK`, which `spinel_rt.h` spells as nothing in the upstream
+  layout and as `static` under SP_MULTI_CTX; the runtime reaches the current
+  instance's copies through `sp_ctx` (`sp_sym_name_fn` and friends, installed
+  by `sp_tu_init`). An ext TU then exports only its init, its try helper and
+  its entries.
+- The init starts with the same head as every entry form
+  (`emit_tu_ctx_init`): `sp_tu_ctx_init()` installs the per-instance hooks and
+  `sp_reset_tu_statics()` puts the file-scope slots (module and class ivars,
+  constants, globals, object pools, the nil-sentinel slots) back to their
+  initial values. A new instance of the same program therefore starts from
+  scratch rather than reading the previous instance's heap. Call the init
+  once per instance, with that instance current.
+- The emitted header's include guard is named after the init function
+  (`SPINEL_EXT_INIT_RAYCAST_H` for `Init_raycast`), so one host TU can include
+  the headers of several programs.
+
+A host TU that includes the header under SP_MULTI_CTX sees the runtime the way
+the program TU does: the routed functions and the four hooks are private
+declarations there, so a host may call the inline helpers it needs to build
+and read values (`sp_str_from_bytes`, `sp_str_byte_len`, the typed-array
+accessors) but not raise on the program's behalf; entries are called through
+`Init_<name>_try` so a raise comes back as (class, message).
+
+`test/multi_ctx/ext3.sh` links three ext programs with different symbol and
+class tables into one binary, runs them one after another and on three threads
+at once (also under `SPINEL_GC_STRESS=1`) against a CRuby reference, and
+destroys and recreates each instance to check that init resets the program.

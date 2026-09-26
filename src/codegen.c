@@ -11138,7 +11138,11 @@ char *codegen_program(const NodeTable *nt) {
   /* ext mode: the program-hook family (sp_sym_to_s, sp_class_to_s, ...) gets
      external linkage so a host TU including the emitted header resolves to
      THIS TU's definitions; the macro flips the header's prototypes off
-     `static` before the include (ext-design.md, Layer 1). */
+     `static` before the include (ext-design.md, Layer 1). The definitions are
+     emitted with SP_EXT_HOOK, which spinel_rt.h spells as nothing there and as
+     `static` under SP_MULTI_CTX: several ext programs then share one image,
+     each instance reaching its own program's hooks through sp_ctx like any
+     other generated TU, so none may export them. */
   if (g_ext_init_name) buf_puts(&b, "#define SPINEL_EXT_KERNEL 1\n");
   /* No poly-renderable value anywhere: skip the sp_poly_inspect hook install
      in the header (it would force sp_sym_to_s / sp_class_to_s definitions
@@ -11380,7 +11384,7 @@ char *codegen_program(const NodeTable *nt) {
        heap object and writes its mark word. A nil Symbol lands on the
        out-of-range arm (id -1), so this was reachable from ordinary
        Ruby. sp_str_empty is the marked empty string. */
-    buf_printf(&b, "%s", g_ext_init_name ? "" : "static ");
+    buf_printf(&b, "%s", g_ext_init_name ? "SP_EXT_HOOK " : "static ");
     buf_printf(&b, "const char *sp_sym_to_s(sp_sym id){"
                    "if(id>=0&&id<%d)return %s;"
                    "if(id>=%d&&id<%d+sp_ndyn)return sp_dyn_syms[id-%d];"
@@ -11397,21 +11401,21 @@ char *codegen_program(const NodeTable *nt) {
        a spinel string -- String#to_sym -- calls the _n form with the real
        length. The first-byte test keeps strcmp's early exit: without it every
        candidate paid a full length walk before the compare could fail. */
-    buf_printf(&b, "%s", g_ext_init_name ? "" : "static ");
+    buf_printf(&b, "%s", g_ext_init_name ? "SP_EXT_HOOK " : "static ");
     buf_printf(&b, "sp_sym sp_sym_intern_n(const char *s, size_t n){"
                    "for(int i=0;i<%d;i++){const char*_c=%s;if(_c[0]==s[0]&&sp_str_byte_len(_c)==n&&memcmp(_c,s,n)==0)return (sp_sym)i;}"
                    "for(int i=0;i<sp_ndyn;i++){const char*_c=sp_dyn_syms[i];if(_c[0]==s[0]&&sp_str_byte_len(_c)==n&&memcmp(_c,s,n)==0)return (sp_sym)(%d+i);}"
                    "if(sp_ndyn<SP_DYN_SYMS_MAX){sp_dyn_syms[sp_ndyn]=sp_str_from_bytes(s,n);return (sp_sym)(%d+sp_ndyn++);}"
                    "return (sp_sym)0;}\n", ns, ns > 0 ? "sp_sym_names[i]" : "sp_str_empty", ns, ns);
     buf_printf(&b, "%ssp_sym sp_sym_intern(const char *s){return sp_sym_intern_n(s,s?strlen(s):0);}\n\n",
-               g_ext_init_name ? "" : "static ");
+               g_ext_init_name ? "SP_EXT_HOOK " : "static ");
   }
   /* sp_class_to_s serves the runtime's SP_TAG_CLASS render arms (sp_poly_puts
      / sp_poly_to_s / sp_poly_inspect). Emitted whenever anything in the
      program could reach those (user classes, class values, any poly-capable
      slot -- see the render-reach scan); a purely-scalar program skips it. */
   if (g_emit_class_names) {
-    buf_printf(&b, "%s", g_ext_init_name ? "" : "static ");
+    buf_printf(&b, "%s", g_ext_init_name ? "SP_EXT_HOOK " : "static ");
     buf_puts(&b, "const char *sp_class_to_s(sp_Class c){if(sp_class_nil_p(c))return SPL(\"nil\");if(c.name)return c.name;switch(c.cls_id){");
     for (int i = 0; i < c->nclasses; i++) {
       if (!is_builtin_reopen(c->classes[i].name)) {
@@ -12801,7 +12805,19 @@ char *codegen_program(const NodeTable *nt) {
                     "   shim: call %s() once before any entry; wrap entry calls in\n"
                     "   %s_try to receive a Ruby raise as (class name, message). */\n",
                g_ext_init_name, g_ext_init_name, g_ext_init_name);
-    buf_puts(&hb, "#ifndef SPINEL_EXT_H\n#define SPINEL_EXT_H\n");
+    /* The guard is named after the init function, so a host that drives
+       several ext programs can include each program's header in one TU. */
+    { Buf gd; memset(&gd, 0, sizeof gd);
+      buf_puts(&gd, "SPINEL_EXT_");
+      for (const char *q = g_ext_init_name; *q; q++) {
+        char ch = *q;
+        if (ch >= 'a' && ch <= 'z') ch = (char)(ch - 'a' + 'A');
+        else if (!((ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9'))) ch = '_';
+        buf_printf(&gd, "%c", ch);
+      }
+      buf_puts(&gd, "_H");
+      buf_printf(&hb, "#ifndef %s\n#define %s\n", gd.p, gd.p);
+      free(gd.p); }
     buf_puts(&hb, "#define SPINEL_EXT_HOST 1  /* runtime globals resolve to the kernel TU */\n");
     buf_puts(&hb, "#include \"spinel_rt.h\"\n\n");
     buf_printf(&hb, "void %s(void);\n", g_ext_init_name);
