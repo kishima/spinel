@@ -95,6 +95,15 @@
 # define SP_TU_BSS
 #endif
 
+/* SP_NO_PROCESS: the port cannot start another process (no fork/exec, no
+   waitpid). Process.spawn / Process.waitpid2, Kernel#system and the backtick
+   then raise NotImplementedError instead of being linked against functions
+   the port's libc does not have. SP_NO_MMAN implies it: an MMU-less target
+   has no fork. */
+#if defined(SP_NO_MMAN) && !defined(SP_NO_PROCESS)
+# define SP_NO_PROCESS
+#endif
+
 /* Worker identity, shared by the allocators (per-worker string/object heaps) and
    the scheduler that owns it. In the base header so sp_gc.h's SP_GC_HEAP_PUSH --
    included ahead of sp_alloc.h -- can index the per-worker object heap. */

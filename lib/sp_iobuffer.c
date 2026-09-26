@@ -17,7 +17,9 @@
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
+#ifndef SP_NO_MMAN   /* IO::Buffer.map; a port without an MMU refuses it (below) */
 #include <sys/mman.h>
+#endif
 #include <sys/stat.h>
 
 #ifndef SP_MULTI_CTX  /* per-ctx macro under SP_MULTI_CTX (sp_ctx.h) */
@@ -309,8 +311,11 @@ static void iob_scan(void *p) {
 }
 /* Give the allocation back: munmap for a mapped file, free otherwise. */
 static void iob_release(sp_IOBuffer *b) {
+#ifndef SP_NO_MMAN
   if (b->map_base) { munmap(b->map_base, b->map_len); b->map_base = NULL; b->map_len = 0; }
-  else free(b->data);
+  else
+#endif
+  free(b->data);
   b->data = NULL;
 }
 void sp_IOBuffer_fin(void *p) {
@@ -981,6 +986,13 @@ sp_int sp_IOBuffer_pwrite_io(sp_IOBuffer *b, sp_RbVal io, sp_int from, sp_int le
    PROT_READ. The finalizer munmaps; a slice keeps its source alive as for
    any buffer; resize is refused (see sp_IOBuffer_resize). */
 sp_IOBuffer *sp_IOBuffer_become_map(sp_IOBuffer *b, sp_RbVal io, sp_int size, sp_int offset, sp_int flags) {
+#ifdef SP_NO_MMAN
+  /* no MMU, no file mapping: refuse loudly rather than hand back a buffer
+     that silently is not the file */
+  (void)b; (void)io; (void)size; (void)offset; (void)flags;
+  sp_raise_cls("NotImplementedError", "IO::Buffer.map is not supported on this port (no mmap)");
+  return NULL;
+#else
   SP_GC_ROOT(b); SP_GC_ROOT_RBVAL(io);
   sp_File *f = iob_io(io);
   if (offset < 0) iob_arg("Offset can't be negative!");
@@ -1015,4 +1027,5 @@ sp_IOBuffer *sp_IOBuffer_become_map(sp_IOBuffer *b, sp_RbVal io, sp_int size, sp
   b->map_len = len;
   b->data = (uint8_t *)m + (offset - page);
   return b;
+#endif
 }

@@ -1221,6 +1221,11 @@ sp_int sp_file_write(const char *path, const char *data) {SP_GC_ROOT_STR(path);S
    from a pipe does, and the wait is the scheduler's polling one, as
    Kernel#system's is. */
 const char *sp_backtick(const char *cmd) {SP_GC_ROOT_STR(cmd);
+#ifdef SP_NO_PROCESS
+  (void)cmd;
+  sp_raise_cls("NotImplementedError", "`command` is not supported on this port");
+  return sp_str_empty;
+#else
   int fds[2];
   if (pipe(fds) != 0) { sp_last_status = -1; return sp_str_empty; }
   fflush(NULL);
@@ -1259,6 +1264,7 @@ const char *sp_backtick(const char *cmd) {SP_GC_ROOT_STR(cmd);
   sp_str_set_len(r, len);
   free(buf);
   return r;
+#endif
 }
 
 const char *sp_file_basename(const char *path) {SP_GC_ROOT_STR(path);

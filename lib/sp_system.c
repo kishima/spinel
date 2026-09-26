@@ -25,6 +25,15 @@ int sp_last_status = 0;
 #endif
 
 
+#if defined(SP_NO_PROCESS) || defined(SP_NO_MMAN)
+/* No fork/exec on this port (SP_NO_PROCESS, sp_types.h -- this file keeps to
+   libc headers, so it tests the knobs itself). */
+extern void sp_raise_cls(const char *cls, const char *msg) __attribute__((noreturn));
+int sp_system_args(int argc, const char *const *argv) {
+  (void)argc; (void)argv;
+  sp_raise_cls("NotImplementedError", "Kernel#system is not supported on this port");
+}
+#else
 int sp_system_args(int argc, const char *const *argv) {
   if (argc <= 0 || argv == NULL || argv[0] == NULL) {
     sp_last_status = -1;
@@ -58,3 +67,4 @@ int sp_system_args(int argc, const char *const *argv) {
   sp_last_status = status;
   return (WIFEXITED(status) && WEXITSTATUS(status) == 0) ? TRUE : FALSE;
 }
+#endif /* SP_NO_PROCESS */

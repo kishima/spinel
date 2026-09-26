@@ -61,6 +61,29 @@
 #include "sp_process_status.h"   /* sp_ProcessStatus, sp_box_process_status */
 #include "sp_system.h"   /* sp_last_status: $? */
 
+#ifdef SP_NO_PROCESS
+/* No process creation on this port (see SP_NO_PROCESS in sp_types.h): every
+   entry the generated program can reach raises instead of forking. */
+static SP_NORETURN void sp_process_unsupported(const char *what) {
+  sp_raise_cls("NotImplementedError", what);
+}
+SP_NORETURN void sp_process_spawn_fail(int *owned, const char *cls, const char *msg) {
+  (void)owned; sp_raise_cls(cls, msg);
+}
+int sp_process_open_redirect(const char *path, int slot, int *owned) {
+  (void)path; (void)slot; (void)owned;
+  sp_process_unsupported("Process.spawn is not supported on this port");
+}
+sp_int sp_process_spawn(sp_RbVal cmd, sp_RbVal args_box, sp_RbVal opts_box) {
+  (void)cmd; (void)args_box; (void)opts_box;
+  sp_process_unsupported("Process.spawn is not supported on this port");
+}
+sp_PolyArray *sp_process_waitpid2(sp_int pid) {
+  (void)pid;
+  sp_process_unsupported("Process.waitpid2 is not supported on this port");
+}
+#else
+
 /* Local error-message builder. Returns a static buffer; copy the
    result before another call. Avoids sp_sprintf which would pull
    sp_class_to_s / sp_sym_to_s into the link. */
@@ -401,3 +424,4 @@ sp_PolyArray *sp_process_waitpid2(sp_int pid) {
   sp_PolyArray_push(pa, sp_box_process_status(sp_process_status_new((sp_int)r, (sp_int)status)));
   return pa;
 }
+#endif /* SP_NO_PROCESS */
