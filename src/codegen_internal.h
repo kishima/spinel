@@ -760,10 +760,10 @@ int emit_poly_rhs_coerced(Compiler *c, TyKind slot, int v, Buf *b);
 /* An empty `[]` / `{}` into a typed slot builds at the slot's representation
    rather than the literal's default (#4054). Returns 1 when it emitted. */
 int emit_empty_container_for_slot(Compiler *c, int v, TyKind slot, Buf *b);
-int emit_frozen_literal_open(Buf *b, size_t raw_len);
-int emit_frozen_literal_open_a(Buf *b, size_t raw_len, int ascii7);
-int bytes_are_ascii7(const char *s, size_t n);
-void emit_frozen_literal_close(Buf *b, int id);
+/* A frozen string literal as a const static object with a precomputed header
+   (codegen_util.c). `s` holds the raw bytes, `len` of them (NULs included). */
+void emit_frozen_literal(Buf *b, const char *s, size_t len);
+void emit_frozen_literal_init(Buf *b, const char *s, size_t len);
 /* Emit a Ruby string literal. len is the true byte count (may exceed strlen
    when the string contains embedded NUL bytes). */
 /* What a `round`-family call's trailing keyword hash says, as far as it can

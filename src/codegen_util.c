@@ -1977,35 +1977,71 @@ void emit_c_escaped(Buf *b, const char *s) {
    `frozen?` is true and mutation raises FrozenError. Synthesized strings
    (symbol names, ivar names, ...) go through emit_str_literal, which is never
    frozen: the pragma only affects literals written in the source. */
-/* Open/close a static frozen-literal object around caller-streamed escaped
-   bytes. The 0xf1 marker promises a REAL sp_str_hdr immediately in front of
-   the data (hash cache, mutation guards), so every frozen literal -- single
-   or an adjacent-literal fold -- must carry this header (#1749). */
-int emit_frozen_literal_open(Buf *b, size_t raw_len) {
-  return emit_frozen_literal_open_a(b, raw_len, 0);
+/* A frozen literal is a static header+marker+data object whose 0xf1 marker
+   promises a REAL sp_str_hdr immediately in front of the data (hash cache,
+   mutation guards), so every frozen literal -- single or an adjacent-literal
+   fold -- carries this header (#1749).
+
+   The object is `const`: nothing is left for the runtime to write into it, so
+   it goes to .rodata with the code instead of .data. Two header fields used to
+   be filled in lazily and are now computed here instead:
+   - `hash`: sp_str_hash caches the FNV-1a hash of a 0xf1 string in its header
+     on first use (sp_str_hash_miss). The same value is baked in: FNV-1a 64 over
+     the bytes up to the first NUL (sp_str_hash_bytes walks a C string), 0
+     stored as 1. A literal never carries the BINARY bit, so the binary twist
+     of sp_str_hash_compute does not apply.
+   - SP_STR_SIZE_ASCII7: sp_str_length sets it once a walk finds as many
+     characters as bytes (sp_str_count_units). The same walk is done here, so
+     the literal starts in the state its first #length would have left it in.
+   A write that slips through now faults instead of silently dirtying the
+   literal (on a host, .rodata is mapped read-only). */
+static uint64_t frozen_literal_hash(const char *s, size_t n) {
+  uint64_t h = 14695981039346656037ULL;
+  for (size_t i = 0; i < n && s[i]; i++) { h ^= (unsigned char)s[i]; h *= 1099511628211ULL; }
+  return h ? h : 1;
 }
-/* `ascii7` says every byte is below 0x80, which the caller knows from the
-   bytes it is about to stream. Recording it in the header is what lets the
-   runtime index this literal by byte -- sp_str_fixed_width wants the bit AND
-   a known length, and a literal has always carried the length. Without it a
-   frozen literal was walked to find every character index, and the byte-load
-   fold for `s[i] == "c"` had no way to prove itself safe (#4239). */
-int emit_frozen_literal_open_a(Buf *b, size_t raw_len, int ascii7) {
+/* sp_str_count_units (lib/sp_str.c) == byte length: 7-bit, or a byte sequence
+   that is not well-formed UTF-8 (the runtime counts those by byte). */
+static int frozen_literal_fixed_width(const char *s, size_t bl) {
+  const unsigned char *p = (const unsigned char *)s, *end = p + bl;
+  size_t n = 0;
+  while (p < end) {
+    unsigned c = *p;
+    if (c < 0x80) { p++; n++; continue; }
+    int extra; unsigned cp, min;
+    if ((c & 0xE0) == 0xC0) { extra = 1; cp = c & 0x1F; min = 0x80; }
+    else if ((c & 0xF0) == 0xE0) { extra = 2; cp = c & 0x0F; min = 0x800; }
+    else if ((c & 0xF8) == 0xF0) { extra = 3; cp = c & 0x07; min = 0x10000; }
+    else return 1;
+    p++;
+    if (p + extra > end) return 1;
+    for (int i = 0; i < extra; i++) {
+      if ((*p & 0xC0) != 0x80) return 1;
+      cp = (cp << 6) | (*p & 0x3F);
+      p++;
+    }
+    if (cp < min || (cp >= 0xD800 && cp <= 0xDFFF) || cp > 0x10FFFF) return 1;
+    n++;
+  }
+  return n == bl;
+}
+/* The initializer of a frozen-literal object: `{ { hdr }, 0xf1, "bytes" }`. */
+void emit_frozen_literal_init(Buf *b, const char *s, size_t len) {
+  size_t dl = len + 1;
+  buf_printf(b, "{ { NULL, %zu%s, %zu, 0x%016llxULL }, 0xf1, \"", dl,
+             frozen_literal_fixed_width(s, len) ? " | SP_STR_SIZE_ASCII7" : "", len,
+             (unsigned long long)frozen_literal_hash(s, len));
+  if (s && len) emit_c_escaped_n(b, s, len);
+  buf_puts(b, "\" }");
+}
+void emit_frozen_literal(Buf *b, const char *s, size_t len) {
   static int g_fzl_ctr = 0;
   int id = g_fzl_ctr++;
-  size_t dl = raw_len + 1;
-  buf_printf(b, "({ static struct { sp_str_hdr h; unsigned char m; char d[%zu]; } _fzl_%d = "
-                "{ { NULL, %zu%s, %zu, 0 }, 0xf1, \"", dl, id, dl,
-             ascii7 ? " | SP_STR_SIZE_ASCII7" : "", raw_len);
-  return id;
-}
-/* Every byte below 0x80 -- the compile-time half of the ASCII7 bit above. */
-int bytes_are_ascii7(const char *s, size_t n) {
-  for (size_t i = 0; i < n; i++) if ((unsigned char)s[i] >= 0x80) return 0;
-  return 1;
-}
-void emit_frozen_literal_close(Buf *b, int id) {
-  buf_printf(b, "\" }; _fzl_%d.d; })", id);
+  buf_printf(b, "({ static const struct { sp_str_hdr h; unsigned char m; char d[%zu]; } _fzl_%d = ",
+             len + 1, id);
+  emit_frozen_literal_init(b, s, len);
+  /* the same type the literal had while it was writable: callers take char * */
+  buf_printf(b, "; (char *)_fzl_%d.d; })", id);
 }
 static int round_kw_elem(Compiler *c, const RoundKw *o, int e, int *is_splat, int *opaque) {
   const NodeTable *nt = c->nt;
@@ -2117,10 +2153,7 @@ void emit_str_literal_n(Buf *b, const char *content, size_t len, int frozen) {
      string exactly (hdr | marker | bytes), the hash cache write hits our
      own static storage, and next=NULL keeps it off the sweep list. */
   if (frozen) {
-    int id = emit_frozen_literal_open_a(b, content ? len : 0,
-                                       content && len ? bytes_are_ascii7(content, len) : 1);
-    if (content && len) emit_c_escaped_n(b, content, len);
-    emit_frozen_literal_close(b, id);
+    emit_frozen_literal(b, content, content ? len : 0);
     return;
   }
   if (!content || len == 0) { buf_printf(b, "(&(\"%s\")[1])", mk); return; }

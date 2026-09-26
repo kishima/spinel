@@ -416,12 +416,33 @@ void emit_interp(Compiler *c, int id, Buf *b) {
        the full static header object -- the bare "\xf1" prefix promises an
        sp_str_hdr that would not exist (#1749 family). */
     if (nt_int(c->nt, id, "fzl", 0)) {
+      /* the parts are held escaped (interp_plan); the header wants the raw
+         bytes (hash, width), so undo interp_plan's own escaping */
       size_t raw3 = 0;
       for (int k = 0; k < nwp; k++) raw3 += (size_t)wp[k].lit_len;
-      int fid3 = emit_frozen_literal_open(b, raw3);
-      for (int k = 0; k < nwp; k++)
-        buf_printf(b, "%.*s", wp[k].lit_esc_len, (lits.p ? lits.p : "") + wp[k].lit_off);
-      emit_frozen_literal_close(b, fid3);
+      char *raw = malloc(raw3 + 1);
+      size_t rn = 0;
+      for (int k = 0; k < nwp; k++) {
+        const char *e = (lits.p ? lits.p : "") + wp[k].lit_off;
+        for (int q = 0; q < wp[k].lit_esc_len; q++) {
+          if (e[q] != '\\') { raw[rn++] = e[q]; continue; }
+          char x = e[++q];
+          if (x == 'n') raw[rn++] = '\n';
+          else if (x == 't') raw[rn++] = '\t';
+          else if (x == 'r') raw[rn++] = '\r';
+          else if (x >= '0' && x <= '7') {
+            raw[rn++] = (char)(((x - '0') << 6) | ((e[q + 1] - '0') << 3) | (e[q + 2] - '0'));
+            q += 2;
+          }
+          else raw[rn++] = x;   /* \\ and \" */
+        }
+      }
+      if (rn != raw3) {
+        fprintf(stderr, "spinel: internal error: frozen literal fold unescaped %zu bytes, expected %zu\n", rn, raw3);
+        exit(1);
+      }
+      emit_frozen_literal(b, raw, rn);
+      free(raw);
     }
     else {
       buf_puts(b, "(&(\"\\xff\" \"");
