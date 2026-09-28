@@ -920,6 +920,7 @@ test-multi-ctx: check-mc-syms check-mc-globals
 	@SPINEL=$(SPINEL) ./test/multi_ctx/link2.sh
 	@SPINEL=$(SPINEL) ./test/multi_ctx/ext3.sh
 	@SPINEL=$(SPINEL) ./test/multi_ctx/estalloc.sh
+	@SPINEL=$(SPINEL) ./test/multi_ctx/io_backend.sh
 
 # nm gate: verify the allocation override reached every mc TU (only sp_ctx.o may
 # reference libc malloc/free/...). See test/multi_ctx/check_syms.sh.
