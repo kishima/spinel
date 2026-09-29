@@ -11025,9 +11025,14 @@ static void emit_tu_nil_slot(Compiler *c, Buf *b, TyKind t, const char *name, co
   int zero = sp_streq(init, "NULL") || sp_streq(init, "0") || sp_streq(init, "{0}") ||
              strstr(init, "){0}") != NULL;
   if (zero) {
-    buf_puts(b, "static ");
+    /* Already zeroed storage, so it takes SP_TU_BSS as it is and no
+       initializer (the value is the same). Without it a pointer constant or a
+       class ivar costs 4-8 bytes of the target's default .bss each -- on an
+       embedded port, internal RAM, and on RISC-V the gp-relative .sbss that
+       only an explicit section moves. */
+    buf_puts(b, "SP_TU_BSS static ");
     emit_ctype(c, t, b);
-    buf_printf(b, " %s = %s;\n", name, init);
+    buf_printf(b, " %s;\n", name);
     return;
   }
   buf_puts(b, "SP_TU_NIL_SLOT(");
