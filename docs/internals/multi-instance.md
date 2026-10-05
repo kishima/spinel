@@ -418,6 +418,16 @@ program goes through the same path as a `--no-main` program (T4-0 above):
   initial values. A new instance of the same program therefore starts from
   scratch rather than reading the previous instance's heap. Call the init
   once per instance, with that instance current.
+- The runtime header's own lazily allocated TU state -- the break-scope
+  stack (`sp_brk_stack` and its parallel arrays) and the frozen-string dedup
+  table (`sp_fstr_tab`) -- is allocated from whichever instance first needs
+  it, so it dies with that instance. `sp_tu_ctx_init` clears it (and the
+  break depth) once per instance, keyed on `sp_ctx.tu_lazy_inited`, which
+  `sp_instance_create` zeroes: a new instance starts with them empty, and a
+  `--no-main` entry called again in the same instance keeps its allocation
+  instead of leaking a fresh one per call. `test/multi_ctx/lazy_slots.sh`
+  restarts a program that breaks from a block and dedups strings on a
+  filled (and, under ASan, poisoned) pool.
 - The emitted header's include guard is named after the init function
   (`SPINEL_EXT_INIT_RAYCAST_H` for `Init_raycast`), so one host TU can include
   the headers of several programs.
