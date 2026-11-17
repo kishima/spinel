@@ -600,8 +600,15 @@ static int node_is_stringio(Compiler *c, int node) {
          sp_streq(c->classes[ty_object_class(t)].c_name, "StringIO");
 }
 
-static int warn_unresolved_pos(Compiler *c, int id) {
-  if (!getenv("SPINEL_WARN_UNRESOLVED")) return 0;
+/* A poly dispatch tries the builtin surface for its default arm (a receiver
+   that really is a String, an Array, a number) and throws the trial away when
+   it lowers to the NoMethodError the default already raises. An unresolved
+   call met inside such a trial is not a call the program makes, so its
+   warning is held here and printed only if the trial's text is kept. */
+static Buf *g_trial_warn = NULL;
+
+static void warn_unresolved(Compiler *c, int id, const char *nm, TyKind grt) {
+  if (!getenv("SPINEL_WARN_UNRESOLVED")) return;
   const NodeTable *nt = c->nt;
   int ln = (int)nt_int(nt, id, "node_line", 0);
   const char *file = nt->source_file;
@@ -610,8 +617,32 @@ static int warn_unresolved_pos(Compiler *c, int id) {
     if (f && *f) file = f;
   }
   if (!file || !*file) file = "source.rb";
-  fprintf(stderr, "spinel: %s:%d: warning: ", file, ln);
-  return 1;
+  Buf m; memset(&m, 0, sizeof m);
+  buf_printf(&m, "spinel: %s:%d: warning: unresolved call '%s' on %s receiver -> %s\n",
+             file, ln, nm ? nm : "?", ty_name(grt),
+             g_gate_raise ? "NoMethodError (matching CRuby)" : "nil (CRuby would raise NoMethodError)");
+  if (g_trial_warn) buf_puts(g_trial_warn, m.p);
+  else fputs(m.p, stderr);
+  free(m.p);
+}
+
+/* Bracket a trial emission: warnings go to `hold` until trial_warn_end, which
+   passes them on (to an enclosing trial, or stderr) only when `keep`. */
+static Buf *trial_warn_begin(Buf *hold) {
+  Buf *sv = g_trial_warn;
+  memset(hold, 0, sizeof *hold);
+  g_trial_warn = hold;
+  return sv;
+}
+
+static void trial_warn_end(Buf *hold, Buf *sv, int keep) {
+  g_trial_warn = sv;
+  if (keep && hold->p) {
+    if (sv) buf_puts(sv, hold->p);
+    else fputs(hold->p, stderr);
+  }
+  free(hold->p);
+  memset(hold, 0, sizeof *hold);
 }
 
 /* A block-carrying call on a POLY receiver whose name an instantiated user
@@ -5439,6 +5470,7 @@ static int emit_poly_str_prearm(Compiler *c, int id, int recv, const char *name,
   TyKind sv_ty = c->ntype[id];
   c->ntype[id] = bt;
   Buf ib; memset(&ib, 0, sizeof ib);
+  Buf tw; Buf *sv_tw = trial_warn_begin(&tw);
   if (ret == TY_POLY && bt != TY_POLY) {
     Buf nb; memset(&nb, 0, sizeof nb);
     emit_expr(c, id, &nb);
@@ -5455,8 +5487,10 @@ static int emit_poly_str_prearm(Compiler *c, int id, int recv, const char *name,
       strncmp(ib.p, "sp_raise_poly_nomethod(", 23) == 0 ||
       (g_pre && g_pre->len != sv_pre)) {
     if (g_pre && g_pre->len != sv_pre) { g_pre->len = sv_pre; g_pre->p[sv_pre] = 0; }
+    trial_warn_end(&tw, sv_tw, 0);
     free(ib.p); return 0;
   }
+  trial_warn_end(&tw, sv_tw, 1);
   /* a shared-mutable string is a builtin OBJ box, not SP_TAG_STR, and is a
      string: sp_poly_recv_s takes both, so the guard has to as well */
   buf_printf(b, "if (_t%d.tag == SP_TAG_STR || sp_poly_is_strbuf(_t%d)) { _t%d = %s; }\nelse ",
@@ -5600,6 +5634,7 @@ static int emit_poly_builtin_default(Compiler *c, int id, int recv, const char *
   TyKind sv_ty = c->ntype[id];
   c->ntype[id] = bt;
   Buf ib; memset(&ib, 0, sizeof ib);
+  Buf tw; Buf *sv_tw = trial_warn_begin(&tw);
   if (ret == TY_POLY && bt != TY_POLY) {
     Buf nb; memset(&nb, 0, sizeof nb);
     emit_expr(c, id, &nb);
@@ -5615,8 +5650,10 @@ static int emit_poly_builtin_default(Compiler *c, int id, int recv, const char *
       strstr(ib.p, "sp_raise_cls(\"NoMethodError\"") != NULL ||
       (g_pre && g_pre->len != sv_pre)) {
     if (g_pre && g_pre->len != sv_pre) { g_pre->len = sv_pre; g_pre->p[sv_pre] = 0; }
+    trial_warn_end(&tw, sv_tw, 0);
     free(ib.p); return 0;
   }
+  trial_warn_end(&tw, sv_tw, 1);
   buf_printf(b, "%s _t%d = %s; break;", label ? " default:" : "", tr, ib.p);
   free(ib.p);
   return 1;
@@ -6811,6 +6848,7 @@ static int emit_poly_method_dispatch(Compiler *c, int id, Buf *b) {
         TyKind sv_ty = c->ntype[id];
         if (bt9 != TY_UNKNOWN) c->ntype[id] = bt9;
         Buf ib9; memset(&ib9, 0, sizeof ib9);
+        Buf tw9; Buf *sv_tw9 = trial_warn_begin(&tw9);
         if (bt9 != TY_UNKNOWN && bt9 != TY_POLY) {
           Buf nb9; memset(&nb9, 0, sizeof nb9);
           emit_expr(c, id, &nb9);
@@ -6823,7 +6861,9 @@ static int emit_poly_method_dispatch(Compiler *c, int id, Buf *b) {
         g_n_argov--;
         /* an emission that fell through to the raise token adds nothing: leave
            those tags on the switch's own default so the message is the same */
-        if (ib9.p && strncmp(ib9.p, "sp_raise_nomethod(", 18) != 0) {
+        int keep9 = ib9.p && strncmp(ib9.p, "sp_raise_nomethod(", 18) != 0;
+        trial_warn_end(&tw9, sv_tw9, keep9);
+        if (keep9) {
           buf_puts(b, " case SP_BUILTIN_INT_ARRAY: case SP_BUILTIN_SYM_ARRAY:"
                       " case SP_BUILTIN_FLT_ARRAY: case SP_BUILTIN_STR_ARRAY:"
                       " case SP_BUILTIN_POLY_ARRAY: case SP_BUILTIN_PTR_ARRAY:"
@@ -16741,11 +16781,7 @@ int emit_unresolved_call(Compiler *c, int id, Buf *b) {
           return 1;
         }
       }
-      if (warn_unresolved_pos(c, id)) {
-        fprintf(stderr, "unresolved call '%s' on %s receiver -> %s\n",
-                nm ? nm : "?", ty_name(grt),
-                g_gate_raise ? "NoMethodError (matching CRuby)" : "nil (CRuby would raise NoMethodError)");
-      }
+      warn_unresolved(c, id, nm, grt);
       const char *dflt = (is_scalar_ret(ret) && ret != TY_UNKNOWN) ? default_value(ret) : "sp_box_nil()";
       if (g_gate_raise) {
         /* Scalar slot: the comma-expr yields a typed default the surrounding C

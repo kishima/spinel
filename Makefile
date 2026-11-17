@@ -885,6 +885,12 @@ test: $(SPINEL_TIMEOUT)
 	+@$(MAKE) --no-print-directory clean-test-results
 	+@$(MAKE) $(TEST_JOBS) --no-print-directory test-run
 
+# SPINEL_WARN_UNRESOLVED reports only calls the program makes, not the ones a
+# poly dispatch tries for a builtin arm and throws away.
+.PHONY: warn-unresolved-test
+warn-unresolved-test: $(SPINEL)
+	@SPINEL=$(SPINEL) ./test/warn_unresolved/run.sh
+
 # Library mode (--no-main / --entry / --inject) smoke test. Not part of the
 # .rb/.expected oracle harness (a --no-main unit is not standalone-runnable),
 # so it runs as a standalone script.
@@ -938,7 +944,7 @@ check-mc-globals: $(SP_RT_MC_LIB)
 # The actual run. rbs-test golden-checks the RBS extractor (cheap, C-only).
 # rbs-seed-test checks the seeds actually reach the analyzer (incl. nested
 # classes, #1417).
-test-run: rbs-test rbs-seed-test re-lit-test reject-test cli-opts-test backtrace-test gc-minor-test gc-phases-test gc-threshold-test gc-obj-budget-test gc-str-major-test threaded-render-test gc-locality-test byref-capture-test thread-puts-test ext-test ext-cruby-test test-corpus-summary
+test-run: rbs-test rbs-seed-test re-lit-test reject-test cli-opts-test backtrace-test gc-minor-test gc-phases-test gc-threshold-test gc-obj-budget-test gc-str-major-test threaded-render-test gc-locality-test byref-capture-test thread-puts-test warn-unresolved-test ext-test ext-cruby-test test-corpus-summary
 
 # The test/*.rb corpus (and the bundled packages') on its own, without the
 # C-side legs: what a 32-bit target runs (`make test-corpus CC='cc -m32'`),
